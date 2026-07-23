@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    This app only ever talks to devices on the user's own LAN (Sony TVs,
+    the Windows Companion, Android TVs over ADB) — never a public internet
+    endpoint — and some of those local device APIs (Sony's ScalarWebAPI)
+    are plain HTTP with no TLS option at all. Cleartext is permitted
+    unconditionally rather than scoped to specific hosts because the target
+    IP is whatever the user's local network happens to assign, discovered
+    at runtime, not known ahead of time.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
