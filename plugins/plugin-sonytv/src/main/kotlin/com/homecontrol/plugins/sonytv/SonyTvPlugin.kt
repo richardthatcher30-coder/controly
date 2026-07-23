@@ -44,7 +44,7 @@ private data class PendingRegistration(val client: SonyApiClient, val clientId: 
  * keyed by that id, so the TV recognizes it immediately with no new PIN.
  *
  * Input switching (HDMI 1/2/3/4, etc.) goes through [getSources]/[selectSource]
- * — Sony's `avContent` service (`getCurrentExternalTerminalsStatus` /
+ * — Sony's `avContent` service (`getCurrentExternalInputsStatus` /
  * `setPlayContent`), which switches straight to a specific input by its real
  * `uri`. That's a different, more capable path than the IRCC "Input" button
  * (`RemoteKey.INPUT_SOURCE`, still wired for completeness) which only cycles

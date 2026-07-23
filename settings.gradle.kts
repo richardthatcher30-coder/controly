@@ -18,7 +18,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "HomeControl"
+rootProject.name = "Controly"
 
 // Modules are wired in here only once they have real Gradle build files and
 // source — see docs/ARCHITECTURE.md for the full target module layout.

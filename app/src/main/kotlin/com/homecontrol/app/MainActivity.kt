@@ -24,7 +24,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            HomeControlTheme {
+            // Forced dark, app-wide: a remote-control app is used facing a lit
+            // screen in a dark room, and every screen needs to share one look
+            // rather than the Remote screen going dark while everything else
+            // follows the system's light/dark setting.
+            HomeControlTheme(darkTheme = true) {
                 HomeControlNavHost()
             }
         }

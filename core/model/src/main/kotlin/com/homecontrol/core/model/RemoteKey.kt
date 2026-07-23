@@ -17,6 +17,11 @@ enum class RemoteKey {
     MENU,
     PLAY,
     PAUSE,
+    // A single combined play/pause toggle, as found on most streaming-box
+    // remotes (Fire TV included) — distinct from the separate PLAY/PAUSE
+    // keys above, and mapped to Android's own KEYCODE_MEDIA_PLAY_PAUSE
+    // rather than reusing PLAY, which is a different, play-only keycode.
+    PLAY_PAUSE,
     STOP,
     FAST_FORWARD,
     REWIND,
@@ -29,4 +34,9 @@ enum class RemoteKey {
     CHANNEL_DOWN,
     INPUT_SOURCE,
     SMART_HUB,
+    // Generic "voice search / assistant" button, as found on Fire TV and
+    // Android TV remotes. Unconfirmed against real hardware which intent
+    // Fire OS actually wires this to — mapped to Android's own KEYCODE_ASSIST
+    // as the closest stock equivalent (see AndroidTvPlugin.keyCodeFor).
+    VOICE_ASSIST,
 }

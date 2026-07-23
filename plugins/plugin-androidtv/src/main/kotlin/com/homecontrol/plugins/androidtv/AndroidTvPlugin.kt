@@ -41,7 +41,8 @@ class AndroidTvPlugin @Inject constructor(
 
     override val pluginId: String = PLUGIN_ID
     override val displayName: String = "Android TV"
-    override val supportedDeviceTypes: Set<DeviceType> = setOf(DeviceType.ANDROID_TV, DeviceType.GOOGLE_TV)
+    override val supportedDeviceTypes: Set<DeviceType> =
+        setOf(DeviceType.ANDROID_TV, DeviceType.GOOGLE_TV, DeviceType.FIRE_TV)
     override val pairingStrategy: PairingStrategy = PairingStrategy.ON_SCREEN_APPROVAL
 
     private val connections = ConcurrentHashMap<String, AdbConnection>()
@@ -65,12 +66,25 @@ class AndroidTvPlugin @Inject constructor(
 
         return discovered.deviceTypeHint == DeviceType.ANDROID_TV ||
             discovered.deviceTypeHint == DeviceType.GOOGLE_TV ||
+            discovered.deviceTypeHint == DeviceType.FIRE_TV ||
+            // NOTE: Sky Stream was tried and ruled out here — confirmed to run
+            // Comcast's RDK ("Entertainment OS"), a closed platform with no
+            // ADB/developer-options surface at all, not an Android TV/Google TV
+            // license like Fire TV. Don't re-add Sky matching to this plugin
+            // without a genuinely different protocol to speak to it.
             // The Android TV Remote Service v2 mDNS advertisement is the
             // strongest signal — genuinely OS-level, not vendor-specific.
             serviceType.contains("androidtvremote") ||
             nameAndModel.contains("android tv") ||
             nameAndModel.contains("google tv") ||
-            nameAndModel.contains("chromecast")
+            nameAndModel.contains("chromecast") ||
+            // Fire OS exposes the same ADB-over-TCP surface this plugin
+            // already speaks, but Fire TV has no discovery broadcast of its
+            // own — this only ever matches a manually-added device (see
+            // feature-devices' "Add by IP" flow), never real network traffic.
+            nameAndModel.contains("fire tv") ||
+            nameAndModel.contains("firetv") ||
+            nameAndModel.contains("amazon fire")
     }
 
     override suspend fun pair(discovered: DiscoveredDevice, input: PairingInput): PairingResult =
@@ -79,15 +93,16 @@ class AndroidTvPlugin @Inject constructor(
                 val connection = AdbConnection.open(discovered.ipAddress, keyStore.getOrCreateKeyPair())
                 connections[discovered.ipAddress] = connection
 
+                val deviceType = discovered.deviceTypeHint.takeIf { it in supportedDeviceTypes } ?: DeviceType.ANDROID_TV
                 PairingResult.Success(
                     PairedDevice(
                         id = "$PLUGIN_ID:${discovered.ipAddress}",
                         name = discovered.name,
-                        manufacturer = discovered.manufacturer ?: "Unknown",
-                        model = discovered.model ?: "Android TV",
+                        manufacturer = discovered.manufacturer ?: defaultManufacturer(deviceType),
+                        model = discovered.model ?: defaultModel(deviceType),
                         ipAddress = discovered.ipAddress,
                         macAddress = discovered.macAddress,
-                        deviceType = DeviceType.ANDROID_TV,
+                        deviceType = deviceType,
                         firmwareVersion = discovered.firmwareVersion,
                         capabilities = capabilities(),
                         isOnline = true,
@@ -177,11 +192,23 @@ class AndroidTvPlugin @Inject constructor(
             .toList()
     }
 
+    private fun defaultManufacturer(deviceType: DeviceType): String = when (deviceType) {
+        DeviceType.FIRE_TV -> "Amazon"
+        else -> "Unknown"
+    }
+
+    private fun defaultModel(deviceType: DeviceType): String = when (deviceType) {
+        DeviceType.FIRE_TV -> "Fire TV"
+        else -> "Android TV"
+    }
+
     private fun capabilities() = DeviceCapabilities(
         supportsPower = true,
         supportsVolume = true,
         supportsKeyboard = true,
         supportsApps = true,
+        supportsMediaTransport = true,
+        supportsVoiceAssist = true,
     )
 
     private suspend fun shell(device: PairedDevice, command: String): String = withContext(Dispatchers.IO) {
@@ -201,6 +228,7 @@ class AndroidTvPlugin @Inject constructor(
         RemoteKey.MENU -> "KEYCODE_MENU"
         RemoteKey.PLAY -> "KEYCODE_MEDIA_PLAY"
         RemoteKey.PAUSE -> "KEYCODE_MEDIA_PAUSE"
+        RemoteKey.PLAY_PAUSE -> "KEYCODE_MEDIA_PLAY_PAUSE"
         RemoteKey.STOP -> "KEYCODE_MEDIA_STOP"
         RemoteKey.FAST_FORWARD -> "KEYCODE_MEDIA_FAST_FORWARD"
         RemoteKey.REWIND -> "KEYCODE_MEDIA_REWIND"
@@ -213,5 +241,6 @@ class AndroidTvPlugin @Inject constructor(
         RemoteKey.CHANNEL_DOWN -> "KEYCODE_CHANNEL_DOWN"
         RemoteKey.INPUT_SOURCE -> "KEYCODE_TV_INPUT"
         RemoteKey.SMART_HUB -> "KEYCODE_TV_CONTENTS_MENU"
+        RemoteKey.VOICE_ASSIST -> "KEYCODE_ASSIST"
     }
 }

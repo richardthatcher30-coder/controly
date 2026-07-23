@@ -21,8 +21,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -43,11 +47,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.homecontrol.core.designsystem.R
+import com.homecontrol.core.model.DeviceType
 import com.homecontrol.core.model.PairedDevice
 
 /**
@@ -61,24 +68,38 @@ import com.homecontrol.core.model.PairedDevice
 @Composable
 fun DashboardScreen(
     onAddDeviceClick: () -> Unit,
+    onAddCameraClick: () -> Unit,
     onDeviceClick: (PairedDevice) -> Unit,
     onCamerasClick: () -> Unit,
+    onAboutClick: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val pairedDevices by viewModel.pairedDevices.collectAsState()
+    var showAddPicker by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("HomeControl") },
-                actions = { TextButton(onClick = onCamerasClick) { Text("Cameras") } },
+                title = { Text("Controly") },
+                actions = {
+                    TextButton(onClick = onCamerasClick) {
+                        Icon(Icons.Filled.Videocam, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Cameras")
+                    }
+                    TextButton(onClick = onAboutClick) {
+                        Icon(Icons.Filled.Info, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("About")
+                    }
+                },
             )
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 text = { Text("Add device") },
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                onClick = onAddDeviceClick,
+                onClick = { showAddPicker = true },
             )
         },
     ) { paddingValues ->
@@ -93,6 +114,77 @@ fun DashboardScreen(
                 onDeviceRename = viewModel::renameDevice,
             )
         }
+    }
+
+    if (showAddPicker) {
+        AddPickerDialog(
+            onDismiss = { showAddPicker = false },
+            onPickRemote = {
+                showAddPicker = false
+                onAddDeviceClick()
+            },
+            onPickCamera = {
+                showAddPicker = false
+                onAddCameraClick()
+            },
+        )
+    }
+}
+
+/** "Add device" covers two very different flows (TVs/PCs vs. cameras) — this is just a fork in the road, not a destination of its own. */
+@Composable
+private fun AddPickerDialog(
+    onDismiss: () -> Unit,
+    onPickRemote: () -> Unit,
+    onPickCamera: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("What do you want to add?") },
+        text = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                AddPickerOption(
+                    icon = Icons.Filled.Tv,
+                    label = "Remote",
+                    onClick = onPickRemote,
+                    modifier = Modifier.weight(1f),
+                )
+                AddPickerOption(
+                    icon = Icons.Filled.Videocam,
+                    label = "Camera",
+                    onClick = onPickCamera,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun AddPickerOption(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .background(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), shape = CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = label, style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -250,9 +342,18 @@ private fun RenameDeviceDialog(currentName: String, onDismiss: () -> Unit, onCon
     )
 }
 
+/** TVs of every brand share the teal brand color; Windows PCs get the amber accent — a simple, deliberate two-way split rather than a color per exact [DeviceType]. */
+@Composable
+private fun accentColorFor(deviceType: DeviceType): Color =
+    if (deviceType == DeviceType.WINDOWS_PC) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+
+private fun iconFor(deviceType: DeviceType) = if (deviceType == DeviceType.WINDOWS_PC) Icons.Filled.Computer else Icons.Filled.Tv
+
 @Composable
 private fun PairedDeviceCard(device: PairedDevice, onClick: () -> Unit) {
-    Card(
+    val accent = accentColorFor(device.deviceType)
+
+    ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
@@ -264,21 +365,13 @@ private fun PairedDeviceCard(device: PairedDevice, onClick: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                        shape = CircleShape,
-                    ),
+                    .background(color = accent.copy(alpha = 0.14f), shape = CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_home_control_logo),
-                    contentDescription = null,
-                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.size(24.dp),
-                )
+                Icon(iconFor(device.deviceType), contentDescription = null, tint = accent, modifier = Modifier.size(24.dp))
             }
             Spacer(modifier = Modifier.width(16.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(text = device.name, style = MaterialTheme.typography.titleLarge)
                 Text(
                     text = "${device.manufacturer} · ${device.ipAddress}",
@@ -286,6 +379,11 @@ private fun PairedDeviceCard(device: PairedDevice, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Text(
+                text = "›",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

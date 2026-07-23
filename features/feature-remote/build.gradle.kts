@@ -12,4 +12,6 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:data"))
     implementation(libs.hilt.navigation.compose)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.activity.compose)
 }

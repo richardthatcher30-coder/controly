@@ -93,7 +93,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Text(
-                    text = "HomeControl",
+                    text = "Controly",
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onBackground,
                 )

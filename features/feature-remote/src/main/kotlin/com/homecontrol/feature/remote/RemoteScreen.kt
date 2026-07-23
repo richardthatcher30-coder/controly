@@ -1,7 +1,16 @@
 package com.homecontrol.feature.remote
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -11,6 +20,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,37 +29,71 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Input
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Mouse
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VolumeDown
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -57,9 +101,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -77,6 +123,7 @@ import kotlin.math.roundToInt
 @Composable
 fun RemoteScreen(
     onBack: () -> Unit,
+    onSettingsClick: () -> Unit,
     viewModel: RemoteViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -85,8 +132,18 @@ fun RemoteScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(device?.name ?: "Remote") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StatusDot(isConnected = uiState.isConnected)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(device?.name ?: "Remote")
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
             )
         },
     ) { paddingValues ->
@@ -106,6 +163,7 @@ fun RemoteScreen(
                 isConnecting = uiState.isConnecting,
                 isConnected = uiState.isConnected,
                 connectionError = uiState.connectionError,
+                onSettingsClick = onSettingsClick,
                 viewModel = viewModel,
             )
         }
@@ -113,45 +171,87 @@ fun RemoteScreen(
 }
 
 @Composable
+private fun StatusDot(isConnected: Boolean) {
+    Box(
+        modifier = Modifier
+            .size(10.dp)
+            .clip(CircleShape)
+            .background(if (isConnected) Color(0xFF34C759) else MaterialTheme.colorScheme.outline),
+    )
+}
+
+/**
+ * Every section below is gated on a real [DeviceCapabilities] flag, not on
+ * device family or "not a touchpad device" — showing a button that the
+ * connected plugin doesn't actually map to anything (e.g. a "Voice" button
+ * on a Sony TV, whose key table has no such entry) is worse than not
+ * showing it, since it looks like it should work and silently does nothing.
+ */
+@Composable
 private fun RemoteContent(
     paddingValues: PaddingValues,
     capabilities: DeviceCapabilities,
     isConnecting: Boolean,
     isConnected: Boolean,
     connectionError: String?,
+    onSettingsClick: () -> Unit,
     viewModel: RemoteViewModel,
 ) {
     var showApps by remember { mutableStateOf(false) }
     var showQuickActions by remember { mutableStateOf(false) }
     var showSources by remember { mutableStateOf(false) }
     var isTouchpadFullScreen by remember { mutableStateOf(false) }
+    var useDpadMode by rememberSaveable { mutableStateOf(false) }
+    val hasTouchpad = capabilities.supportsTouchpad || capabilities.supportsMouse
+    val hasQuickIcons = capabilities.supportsVoiceAssist || capabilities.supportsApps ||
+        capabilities.supportsInputSource || capabilities.supportsSmartHub || capabilities.supportsQuickActions
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(paddingValues)
-            .padding(24.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(24.dp),
+        verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
         connectionError?.let { error ->
             Text(text = error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge)
-            OutlinedButton(onClick = viewModel::retryConnect) { Text("Retry") }
+            LabeledCircleButton(Icons.Filled.Refresh, "Retry", enabled = true, onClick = viewModel::retryConnect)
         }
         if (isConnecting) {
             CircularProgressIndicator()
         }
 
-        if (capabilities.supportsPower || capabilities.supportsWakeOnLan) {
-            PowerRow(
+        TopControlsRow(
+            capabilities = capabilities,
+            enabled = isConnected,
+            onPowerOn = viewModel::powerOn,
+            onPowerOff = viewModel::powerOff,
+            onSettingsClick = onSettingsClick,
+        )
+
+        if (hasQuickIcons) {
+            QuickActionsRow(
                 capabilities = capabilities,
                 enabled = isConnected,
-                onPowerOn = viewModel::powerOn,
-                onPowerOff = viewModel::powerOff,
+                onVoiceClick = { viewModel.sendKey(RemoteKey.VOICE_ASSIST) },
+                onAppsClick = { showApps = true },
+                onSourcesClick = { showSources = true },
+                onSmartHubClick = { viewModel.sendKey(RemoteKey.SMART_HUB) },
+                onQuickActionsClick = { showQuickActions = true },
             )
         }
 
-        if (capabilities.supportsTouchpad || capabilities.supportsMouse) {
+        if (capabilities.supportsKeyboard) {
+            KeyboardEntry(enabled = isConnected, onTextChanged = viewModel::onRemoteTextChanged)
+        }
+
+        if (hasTouchpad) {
+            ControlModeToggle(useDpadMode = useDpadMode, onModeChange = { useDpadMode = it })
+        }
+
+        if (hasTouchpad && !useDpadMode) {
             Touchpad(
                 enabled = isConnected,
                 isFullScreen = isTouchpadFullScreen,
@@ -161,56 +261,26 @@ private fun RemoteContent(
                 onRightClick = { viewModel.clickMouse(MouseButton.RIGHT) },
             )
         } else {
-            DPad(enabled = isConnected, onKey = viewModel::sendKey)
-
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                OutlinedButton(enabled = isConnected, onClick = { viewModel.sendKey(RemoteKey.BACK) }) { Text("Back") }
-                OutlinedButton(enabled = isConnected, onClick = { viewModel.sendKey(RemoteKey.HOME) }) { Text("Home") }
-                OutlinedButton(enabled = isConnected, onClick = { viewModel.sendKey(RemoteKey.MENU) }) { Text("Menu") }
-            }
-        }
-
-        if (capabilities.supportsVolume) {
-            VolumeRow(
+            DPadWheel(enabled = isConnected, onKey = viewModel::sendKey)
+            BottomNavRow(
                 enabled = isConnected,
-                onVolumeDown = viewModel::volumeDown,
-                onMute = viewModel::mute,
-                onVolumeUp = viewModel::volumeUp,
+                onBack = { viewModel.sendKey(RemoteKey.BACK) },
+                onHome = { viewModel.sendKey(RemoteKey.HOME) },
+                onMenu = { viewModel.sendKey(RemoteKey.MENU) },
             )
         }
 
-        if (capabilities.supportsChannels) {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                OutlinedButton(enabled = isConnected, onClick = { viewModel.sendKey(RemoteKey.CHANNEL_DOWN) }) { Text("Ch −") }
-                OutlinedButton(enabled = isConnected, onClick = { viewModel.sendKey(RemoteKey.CHANNEL_UP) }) { Text("Ch +") }
-            }
+        if (capabilities.supportsMediaTransport) {
+            MediaPillRow(
+                enabled = isConnected,
+                onRewind = { viewModel.sendKey(RemoteKey.REWIND) },
+                onPlayPause = { viewModel.sendKey(RemoteKey.PLAY_PAUSE) },
+                onFastForward = { viewModel.sendKey(RemoteKey.FAST_FORWARD) },
+            )
         }
 
-        // No per-input list/select API on this device — each press just
-        // steps to the next input, same as the physical remote's Source
-        // button. Watch the TV screen and keep pressing until it lands on
-        // the input you want (e.g. HDMI 2).
-        if (capabilities.supportsSourceCycle) {
-            OutlinedButton(enabled = isConnected, onClick = { viewModel.sendKey(RemoteKey.INPUT_SOURCE) }) { Text("Source") }
-        }
-
-        if (capabilities.supportsKeyboard) {
-            KeyboardEntry(enabled = isConnected, onTextChanged = viewModel::onRemoteTextChanged)
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (capabilities.supportsApps) {
-                OutlinedButton(enabled = isConnected, onClick = { showApps = true }) { Text("Apps") }
-            }
-            if (capabilities.supportsQuickActions) {
-                OutlinedButton(enabled = isConnected, onClick = { showQuickActions = true }) { Text("Quick Actions") }
-            }
-            if (capabilities.supportsInputSource) {
-                OutlinedButton(enabled = isConnected, onClick = { showSources = true }) { Text("Sources") }
-            }
-            if (capabilities.supportsSmartHub) {
-                OutlinedButton(enabled = isConnected, onClick = { viewModel.sendKey(RemoteKey.SMART_HUB) }) { Text("Smart Hub") }
-            }
+        if (capabilities.supportsVolume || capabilities.supportsChannels || capabilities.supportsSourceCycle) {
+            VolumeChannelSection(capabilities = capabilities, enabled = isConnected, viewModel = viewModel)
         }
     }
 
@@ -225,20 +295,143 @@ private fun RemoteContent(
     }
 }
 
+/** Power (on the left, red when it means "off") and Settings (always reachable, on the right) — the same top row as the reference remote. */
 @Composable
-private fun PowerRow(
+private fun TopControlsRow(
     capabilities: DeviceCapabilities,
     enabled: Boolean,
     onPowerOn: () -> Unit,
     onPowerOff: () -> Unit,
+    onSettingsClick: () -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (capabilities.supportsWakeOnLan) {
-            Button(onClick = onPowerOn) { Text("Power on") }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (capabilities.supportsWakeOnLan) {
+                RemoteCircleButton(
+                    icon = Icons.Filled.PowerSettingsNew,
+                    contentDescription = "Power on",
+                    enabled = true,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    onClick = onPowerOn,
+                )
+            }
+            if (capabilities.supportsPower) {
+                RemoteCircleButton(
+                    icon = Icons.Filled.PowerSettingsNew,
+                    contentDescription = "Power off",
+                    enabled = enabled,
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                    onClick = onPowerOff,
+                )
+            }
         }
-        if (capabilities.supportsPower) {
-            Button(enabled = enabled, onClick = onPowerOff) { Text("Power off") }
+        RemoteCircleButton(
+            icon = Icons.Filled.Settings,
+            contentDescription = "Settings",
+            enabled = true,
+            onClick = onSettingsClick,
+        )
+    }
+}
+
+/** The "colored dots / 123 / •••" row from the reference — whichever of these a device actually supports, wrapping via [FlowRow] so it never squeezes on a narrow phone. */
+@Composable
+private fun QuickActionsRow(
+    capabilities: DeviceCapabilities,
+    enabled: Boolean,
+    onVoiceClick: () -> Unit,
+    onAppsClick: () -> Unit,
+    onSourcesClick: () -> Unit,
+    onSmartHubClick: () -> Unit,
+    onQuickActionsClick: () -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        if (capabilities.supportsVoiceAssist) {
+            LabeledCircleButton(Icons.Filled.Mic, "Voice", enabled, onClick = onVoiceClick)
         }
+        if (capabilities.supportsApps) {
+            LabeledCircleButton(Icons.Filled.Apps, "Apps", enabled, onClick = onAppsClick)
+        }
+        if (capabilities.supportsInputSource) {
+            LabeledCircleButton(Icons.AutoMirrored.Filled.Input, "Sources", enabled, onClick = onSourcesClick)
+        }
+        if (capabilities.supportsSmartHub) {
+            LabeledCircleButton(Icons.Filled.Dashboard, "Smart Hub", enabled, onClick = onSmartHubClick)
+        }
+        if (capabilities.supportsQuickActions) {
+            LabeledCircleButton(Icons.Filled.Bolt, "Quick Actions", enabled, onClick = onQuickActionsClick)
+        }
+    }
+}
+
+/** A plain circular icon button — the shared building block for nearly every button on this screen. */
+@Composable
+private fun RemoteCircleButton(
+    icon: ImageVector,
+    contentDescription: String?,
+    enabled: Boolean,
+    size: Dp = 64.dp,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceVariant,
+    contentColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    onClick: () -> Unit,
+) {
+    FilledIconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(size),
+        shape = CircleShape,
+        colors = IconButtonDefaults.filledIconButtonColors(
+            containerColor = containerColor,
+            contentColor = contentColor,
+            disabledContainerColor = containerColor.copy(alpha = 0.4f),
+            disabledContentColor = contentColor.copy(alpha = 0.4f),
+        ),
+    ) {
+        Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(size * 0.4f))
+    }
+}
+
+/** A [RemoteCircleButton] with a caption underneath — used wherever the icon alone wouldn't be self-explanatory (Ch +, Smart Hub, Sources...). */
+@Composable
+private fun LabeledCircleButton(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean,
+    size: Dp = 64.dp,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceVariant,
+    contentColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    onClick: () -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        RemoteCircleButton(
+            icon = icon,
+            contentDescription = label,
+            enabled = enabled,
+            size = size,
+            containerColor = containerColor,
+            contentColor = contentColor,
+            onClick = onClick,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(text = label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun ControlModeToggle(useDpadMode: Boolean, onModeChange: (Boolean) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = !useDpadMode, onClick = { onModeChange(false) }, label = { Text("Trackpad") })
+        FilterChip(selected = useDpadMode, onClick = { onModeChange(true) }, label = { Text("D-pad") })
     }
 }
 
@@ -353,62 +546,179 @@ private fun TouchpadSurface(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedButton(
+            FilledTonalButton(
                 enabled = enabled,
                 onClick = onRightClick,
                 modifier = Modifier.weight(1f),
-            ) { Text("Right click") }
-            OutlinedButton(
+            ) {
+                Icon(Icons.Filled.Mouse, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Right click")
+            }
+            FilledTonalButton(
                 onClick = onToggleFullScreen,
                 modifier = Modifier.weight(1f),
-            ) { Text(if (isFullScreen) "Exit full screen" else "Full screen") }
+            ) {
+                Icon(
+                    if (isFullScreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(if (isFullScreen) "Exit full screen" else "Full screen")
+            }
+        }
+    }
+}
+
+/**
+ * A four-petal "wheel" D-pad, modeled on the reference remote: each
+ * direction is a rounded petal shape rotated into place around a center hub,
+ * rather than four separate square buttons. Built from plain rotated
+ * rounded-rect boxes (no custom path math needed) — each petal box spans the
+ * full wheel and is rotated 0/90/180/270 degrees with content aligned to its
+ * top-center, so the visible wedge always lands in the right compass
+ * position; the icon inside is counter-rotated so it stays upright.
+ */
+@Composable
+private fun DPadWheel(enabled: Boolean, onKey: (RemoteKey) -> Unit) {
+    val wheelSize = 260.dp
+    val hubSize = 76.dp
+    val petalColor = MaterialTheme.colorScheme.surfaceVariant
+    val iconColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val hubColor = MaterialTheme.colorScheme.primary
+
+    Box(modifier = Modifier.size(wheelSize), contentAlignment = Alignment.Center) {
+        DPadPetal(rotation = 0f, wheelSize = wheelSize, icon = Icons.Filled.KeyboardArrowUp, enabled = enabled, color = petalColor, iconColor = iconColor) { onKey(RemoteKey.DPAD_UP) }
+        DPadPetal(rotation = 90f, wheelSize = wheelSize, icon = Icons.AutoMirrored.Filled.KeyboardArrowRight, enabled = enabled, color = petalColor, iconColor = iconColor) { onKey(RemoteKey.DPAD_RIGHT) }
+        DPadPetal(rotation = 180f, wheelSize = wheelSize, icon = Icons.Filled.KeyboardArrowDown, enabled = enabled, color = petalColor, iconColor = iconColor) { onKey(RemoteKey.DPAD_DOWN) }
+        DPadPetal(rotation = 270f, wheelSize = wheelSize, icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft, enabled = enabled, color = petalColor, iconColor = iconColor) { onKey(RemoteKey.DPAD_LEFT) }
+        DPadCenterHub(size = hubSize, enabled = enabled, color = hubColor) { onKey(RemoteKey.DPAD_CENTER) }
+    }
+}
+
+@Composable
+private fun DPadPetal(
+    rotation: Float,
+    wheelSize: Dp,
+    icon: ImageVector,
+    enabled: Boolean,
+    color: Color,
+    iconColor: Color,
+    onClick: () -> Unit,
+) {
+    val petalWidth = wheelSize * 0.42f
+    val petalHeight = wheelSize * 0.5f
+
+    Box(
+        modifier = Modifier
+            .size(wheelSize)
+            .rotate(rotation),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 3.dp)
+                .size(width = petalWidth, height = petalHeight)
+                .clip(RoundedCornerShape(topStartPercent = 50, topEndPercent = 50, bottomStartPercent = 20, bottomEndPercent = 20))
+                .background(color)
+                .clickable(enabled = enabled, onClick = onClick),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Box(modifier = Modifier.padding(top = 18.dp).rotate(-rotation)) {
+                Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(32.dp))
+            }
         }
     }
 }
 
 @Composable
-private fun DPad(enabled: Boolean, onKey: (RemoteKey) -> Unit) {
-    val buttonSize = 64.dp
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+private fun DPadCenterHub(size: Dp, enabled: Boolean, color: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(color)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        DPadButton("▲", buttonSize, enabled) { onKey(RemoteKey.DPAD_UP) }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            DPadButton("◀", buttonSize, enabled) { onKey(RemoteKey.DPAD_LEFT) }
-            DPadButton("OK", buttonSize, enabled) { onKey(RemoteKey.DPAD_CENTER) }
-            DPadButton("▶", buttonSize, enabled) { onKey(RemoteKey.DPAD_RIGHT) }
+        Box(
+            modifier = Modifier
+                .size(size * 0.18f)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.onPrimary),
+        )
+    }
+}
+
+/** Back / Home / Menu, directly under the wheel — same trio as the reference remote's bottom row. */
+@Composable
+private fun BottomNavRow(enabled: Boolean, onBack: () -> Unit, onHome: () -> Unit, onMenu: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        RemoteCircleButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", enabled, onClick = onBack)
+        RemoteCircleButton(Icons.Filled.Home, "Home", enabled, onClick = onHome)
+        RemoteCircleButton(Icons.Filled.Menu, "Menu", enabled, onClick = onMenu)
+    }
+}
+
+/** The wide play/pause pill flanked by smaller rewind/fast-forward circles. */
+@Composable
+private fun MediaPillRow(enabled: Boolean, onRewind: () -> Unit, onPlayPause: () -> Unit, onFastForward: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RemoteCircleButton(Icons.Filled.FastRewind, "Rewind", enabled, size = 52.dp, onClick = onRewind)
+        FilledTonalButton(
+            enabled = enabled,
+            onClick = onPlayPause,
+            modifier = Modifier
+                .weight(1f)
+                .height(56.dp),
+            shape = RoundedCornerShape(50),
+        ) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = "Play/Pause", modifier = Modifier.size(28.dp))
         }
-        DPadButton("▼", buttonSize, enabled) { onKey(RemoteKey.DPAD_DOWN) }
+        RemoteCircleButton(Icons.Filled.FastForward, "Fast forward", enabled, size = 52.dp, onClick = onFastForward)
     }
 }
 
 @Composable
-private fun DPadButton(label: String, size: Dp, enabled: Boolean, onClick: () -> Unit) {
-    FilledTonalButton(
-        enabled = enabled,
-        onClick = onClick,
-        modifier = Modifier.size(size),
-        shape = CircleShape,
-        contentPadding = PaddingValues(0.dp),
-    ) {
-        Text(label)
-    }
-}
-
-@Composable
-private fun VolumeRow(enabled: Boolean, onVolumeDown: () -> Unit, onMute: () -> Unit, onVolumeUp: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        OutlinedButton(enabled = enabled, onClick = onVolumeDown) { Text("Vol −") }
-        OutlinedButton(enabled = enabled, onClick = onMute) { Text("Mute") }
-        OutlinedButton(enabled = enabled, onClick = onVolumeUp) { Text("Vol +") }
+private fun VolumeChannelSection(capabilities: DeviceCapabilities, enabled: Boolean, viewModel: RemoteViewModel) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (capabilities.supportsVolume) {
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                LabeledCircleButton(Icons.Filled.VolumeDown, "Vol −", enabled, onClick = viewModel::volumeDown)
+                LabeledCircleButton(Icons.Filled.VolumeOff, "Mute", enabled, onClick = viewModel::mute)
+                LabeledCircleButton(Icons.Filled.VolumeUp, "Vol +", enabled, onClick = viewModel::volumeUp)
+            }
+        }
+        if (capabilities.supportsChannels) {
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                LabeledCircleButton(Icons.Filled.KeyboardArrowDown, "Ch −", enabled) { viewModel.sendKey(RemoteKey.CHANNEL_DOWN) }
+                LabeledCircleButton(Icons.Filled.KeyboardArrowUp, "Ch +", enabled) { viewModel.sendKey(RemoteKey.CHANNEL_UP) }
+            }
+        }
+        // No per-input list/select API on this device — each press just
+        // steps to the next input, same as the physical remote's Source
+        // button. Watch the TV screen and keep pressing until it lands on
+        // the input you want (e.g. HDMI 2).
+        if (capabilities.supportsSourceCycle) {
+            LabeledCircleButton(Icons.AutoMirrored.Filled.Input, "Source", enabled) { viewModel.sendKey(RemoteKey.INPUT_SOURCE) }
+        }
     }
 }
 
 /**
  * Tapping "Keyboard" immediately requests focus, which brings up the
  * phone's own on-screen keyboard. Every keystroke streams to the PC live
- * via [onTextChanged] rather than waiting for a Send button.
+ * via [onTextChanged] rather than waiting for a Send button. The mic button
+ * (see [VoiceDictationButton]) feeds into the exact same live-diff path —
+ * from the PC's point of view, dictated words arrive no differently than typed ones.
  */
 @Composable
 private fun KeyboardEntry(enabled: Boolean, onTextChanged: (old: String, new: String) -> Unit) {
@@ -418,7 +728,7 @@ private fun KeyboardEntry(enabled: Boolean, onTextChanged: (old: String, new: St
     val keyboardController = LocalSoftwareKeyboardController.current
 
     if (!expanded) {
-        OutlinedButton(enabled = enabled, onClick = { expanded = true }) { Text("Keyboard") }
+        LabeledCircleButton(Icons.Filled.Keyboard, "Keyboard", enabled) { expanded = true }
     } else {
         LaunchedEffect(Unit) {
             focusRequester.requestFocus()
@@ -433,7 +743,17 @@ private fun KeyboardEntry(enabled: Boolean, onTextChanged: (old: String, new: St
                 .fillMaxWidth()
                 .focusRequester(focusRequester),
             singleLine = true,
-            label = { Text("Typing sends live to the PC") },
+            label = { Text("Typing or voice sends live to the PC") },
+            leadingIcon = {
+                VoiceDictationButton(
+                    enabled = enabled,
+                    currentText = text,
+                    onTextChanged = { old, new ->
+                        onTextChanged(old, new)
+                        text = new
+                    },
+                )
+            },
             trailingIcon = {
                 TextButton(
                     onClick = {
@@ -448,12 +768,116 @@ private fun KeyboardEntry(enabled: Boolean, onTextChanged: (old: String, new: St
 }
 
 /**
+ * Live speech-to-text dictation: tap to start listening, tap again (or pause
+ * speaking) to stop. Partial results stream in as the user talks, each one
+ * replacing the previous partial via the same old/new diffing [onTextChanged]
+ * already used for typed input, so a word being "corrected" as recognition
+ * refines it (e.g. "won" -> "one") sends the right backspace-then-retype
+ * rather than just appending. Requires RECORD_AUDIO, requested on first tap.
+ */
+@Composable
+private fun VoiceDictationButton(
+    enabled: Boolean,
+    currentText: String,
+    onTextChanged: (old: String, new: String) -> Unit,
+) {
+    val context = LocalContext.current
+    var isListening by remember { mutableStateOf(false) }
+    var hasPermission by remember {
+        mutableStateOf(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+    }
+    val recognizer = remember {
+        if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechRecognizer.createSpeechRecognizer(context) else null
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { recognizer?.destroy() }
+    }
+
+    fun startListening() {
+        val activeRecognizer = recognizer ?: return
+        val baseText = currentText
+        var lastPartial = ""
+
+        activeRecognizer.setRecognitionListener(
+            object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) = Unit
+                override fun onBeginningOfSpeech() = Unit
+                override fun onRmsChanged(rmsdB: Float) = Unit
+                override fun onBufferReceived(buffer: ByteArray?) = Unit
+                override fun onEndOfSpeech() = Unit
+                override fun onEvent(eventType: Int, params: Bundle?) = Unit
+
+                override fun onError(error: Int) {
+                    isListening = false
+                }
+
+                override fun onResults(results: Bundle?) {
+                    // The final transcript can differ from (and is usually more
+                    // accurate than) the last partial — e.g. a word recognized
+                    // as "won" mid-utterance settling on "one" once the whole
+                    // phrase is heard. Reconcile against it rather than trusting
+                    // the last partial as final.
+                    val final = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                    if (final != null && final != lastPartial) {
+                        onTextChanged(baseText + lastPartial, baseText + final)
+                    }
+                    isListening = false
+                }
+
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val partial = partialResults
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+                        .orEmpty()
+                    if (partial != lastPartial) {
+                        onTextChanged(baseText + lastPartial, baseText + partial)
+                        lastPartial = partial
+                    }
+                }
+            },
+        )
+
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        }
+        activeRecognizer.startListening(intent)
+        isListening = true
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hasPermission = granted
+        if (granted) startListening()
+    }
+
+    IconButton(
+        enabled = enabled && recognizer != null,
+        onClick = {
+            when {
+                isListening -> {
+                    recognizer?.stopListening()
+                    isListening = false
+                }
+                !hasPermission -> permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                else -> startListening()
+            }
+        },
+    ) {
+        Icon(
+            if (isListening) Icons.Filled.MicOff else Icons.Filled.Mic,
+            contentDescription = if (isListening) "Stop voice dictation" else "Start voice dictation",
+            tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
  * Decodes the PC-supplied `data:image/png;base64,…` icon. Falls back to a
  * hand-drawn globe glyph for URL buttons (a real icon can't be extracted
  * from a web address the way it can from a .exe) and a generic list glyph
  * for everything else with no icon (Quick Actions, any app whose icon
- * couldn't be resolved). Drawn with Canvas rather than pulling in
- * material-icons-extended for the one "Public"/"Language" glyph.
+ * couldn't be resolved).
  */
 @Composable
 private fun AppIconImage(iconUri: String?, size: Dp, isUrl: Boolean = false) {
@@ -475,22 +899,22 @@ private fun AppIconImage(iconUri: String?, size: Dp, isUrl: Boolean = false) {
         Box(
             modifier = Modifier
                 .size(size)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)),
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            GlobeIcon(size = size * 0.7f, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            GlobeIcon(size = size * 0.7f, tint = MaterialTheme.colorScheme.primary)
         }
     } else {
         Box(
             modifier = Modifier
                 .size(size)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)),
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Filled.List,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = MaterialTheme.colorScheme.primary,
             )
         }
     }

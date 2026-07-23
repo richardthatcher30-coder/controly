@@ -3,15 +3,12 @@ package com.homecontrol.feature.cameras
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.homecontrol.feature.cameras.onvif.OnvifClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 sealed interface StreamUiState {
     data object Loading : StreamUiState
@@ -45,9 +42,7 @@ class CameraViewModel @Inject constructor(
         }
         _uiState.value = StreamUiState.Loading
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                OnvifClient(camera.ipAddress, camera.onvifPort, camera.username, camera.password).resolveStreamUri()
-            }
+            val result = resolveCameraStreamUri(camera)
             _uiState.value = result.fold(
                 onSuccess = { StreamUiState.Ready(it) },
                 onFailure = { StreamUiState.Failed(it.message ?: "Couldn't connect to the camera") },

@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [PairedDeviceEntity::class],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class HomeControlDatabase : RoomDatabase() {

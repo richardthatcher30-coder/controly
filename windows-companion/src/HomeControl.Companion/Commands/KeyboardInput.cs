@@ -67,6 +67,7 @@ internal static class KeyboardInput
         "MENU" => 0x5D,
         "PLAY" => 0xB3,
         "PAUSE" => 0xB3,
+        "PLAY_PAUSE" => 0xB3,
         "STOP" => 0xB2,
         "FAST_FORWARD" => 0xB0,
         "REWIND" => 0xB1,

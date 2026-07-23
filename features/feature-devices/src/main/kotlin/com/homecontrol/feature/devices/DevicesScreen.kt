@@ -5,14 +5,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -23,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,12 +36,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.homecontrol.core.model.DeviceType
 import com.homecontrol.core.model.DiscoveredDevice
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,6 +54,7 @@ fun DevicesScreen(
     viewModel: DevicesViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showManualAddDialog by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -53,9 +62,10 @@ fun DevicesScreen(
                 title = { Text("Devices") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = { TextButton(onClick = { showManualAddDialog = true }) { Text("Add by IP") } },
             )
         },
         floatingActionButton = {
@@ -90,6 +100,16 @@ fun DevicesScreen(
             onSubmitCode = viewModel::submitPairingCode,
         )
     }
+
+    if (showManualAddDialog) {
+        ManualAddDeviceDialog(
+            onDismiss = { showManualAddDialog = false },
+            onConfirm = { name, ip, deviceType ->
+                viewModel.addManualDevice(name, ip, deviceType)
+                showManualAddDialog = false
+            },
+        )
+    }
 }
 
 @Composable
@@ -104,7 +124,8 @@ private fun DevicesEmptyState(isScanning: Boolean, paddingValues: PaddingValues)
             text = if (isScanning) {
                 "Searching your network…"
             } else {
-                "No devices found yet.\nTap “Scan for devices” to search your network."
+                "No devices found yet.\nTap “Scan for devices” to search your network, or “Add by IP” " +
+                    "if your device doesn't announce itself (Fire TV, for example)."
             },
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -211,6 +232,72 @@ private fun PairingDialog(
                 is PairingUiState.Failed ->
                     Text("Couldn't pair with ${state.deviceName}: ${state.reason}")
             }
+        },
+    )
+}
+
+@Composable
+private fun ManualAddDeviceDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, ipAddress: String, deviceType: DeviceType) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var ipAddress by remember { mutableStateOf("") }
+    var deviceType by remember { mutableStateOf(MANUAL_DEVICE_TYPE_OPTIONS.first().second) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add device by IP") },
+        text = {
+            // Scrollable: five device-type rows plus two text fields don't
+            // fit the available height in landscape (or on small screens) —
+            // without this, Compose was cramming every radio row into zero
+            // height, collapsing the whole list down to one radio button
+            // with no visible label at all (confirmed on a real device).
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = ipAddress,
+                    onValueChange = { ipAddress = it },
+                    label = { Text("IP address") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, autoCorrectEnabled = false),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(text = "Device type", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+                Column {
+                    MANUAL_DEVICE_TYPE_OPTIONS.forEach { (label, type) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { deviceType = type }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = deviceType == type, onClick = { deviceType = type })
+                            Text(text = label, modifier = Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = ipAddress.isNotBlank(),
+                onClick = { onConfirm(name.trim(), ipAddress.trim(), deviceType) },
+            ) { Text("Add") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
 }

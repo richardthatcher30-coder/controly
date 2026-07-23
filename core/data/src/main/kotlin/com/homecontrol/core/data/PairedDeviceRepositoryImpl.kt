@@ -69,6 +69,8 @@ private fun PairedDeviceEntity.toDomain() = PairedDevice(
         supportsQuickActions = supportsQuickActions,
         supportsSourceCycle = supportsSourceCycle,
         supportsSmartHub = supportsSmartHub,
+        supportsMediaTransport = supportsMediaTransport,
+        supportsVoiceAssist = supportsVoiceAssist,
     ),
     isOnline = true,
     pluginId = pluginId,
@@ -98,4 +100,6 @@ private fun PairedDevice.toEntity() = PairedDeviceEntity(
     supportsQuickActions = capabilities.supportsQuickActions,
     supportsSourceCycle = capabilities.supportsSourceCycle,
     supportsSmartHub = capabilities.supportsSmartHub,
+    supportsMediaTransport = capabilities.supportsMediaTransport,
+    supportsVoiceAssist = capabilities.supportsVoiceAssist,
 )

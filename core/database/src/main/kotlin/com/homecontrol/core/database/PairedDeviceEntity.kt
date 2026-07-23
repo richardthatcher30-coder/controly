@@ -33,4 +33,6 @@ data class PairedDeviceEntity(
     val supportsQuickActions: Boolean,
     val supportsSourceCycle: Boolean,
     val supportsSmartHub: Boolean,
+    val supportsMediaTransport: Boolean,
+    val supportsVoiceAssist: Boolean,
 )

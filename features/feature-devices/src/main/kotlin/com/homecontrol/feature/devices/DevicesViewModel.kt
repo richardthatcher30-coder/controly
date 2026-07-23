@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homecontrol.core.data.PairedDeviceRepository
 import com.homecontrol.core.discovery.DeviceDiscoveryScanner
+import com.homecontrol.core.model.DeviceType
 import com.homecontrol.core.model.DiscoveredDevice
+import com.homecontrol.core.model.DiscoveryProtocol
 import com.homecontrol.core.model.PairingInput
 import com.homecontrol.core.model.PairingResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,6 +22,15 @@ data class DevicesUiState(
     val isScanning: Boolean = false,
     val discoveredDevices: List<DiscoveredDevice> = emptyList(),
     val pairingState: PairingUiState? = null,
+)
+
+/** Device types a user can pick when adding a device manually by IP — see [DevicesViewModel.addManualDevice]. */
+val MANUAL_DEVICE_TYPE_OPTIONS: List<Pair<String, DeviceType>> = listOf(
+    "Fire TV" to DeviceType.FIRE_TV,
+    "Android TV / Google TV" to DeviceType.ANDROID_TV,
+    "Sony TV" to DeviceType.SONY_TV,
+    "Samsung TV" to DeviceType.SAMSUNG_TV,
+    "Windows PC" to DeviceType.WINDOWS_PC,
 )
 
 sealed interface PairingUiState {
@@ -105,6 +116,25 @@ class DevicesViewModel @Inject constructor(
         val currentIsGeneric = current.contains("UPnP/")
         val candidateIsGeneric = candidate.contains("UPnP/")
         return if (currentIsGeneric && !candidateIsGeneric) candidate else current
+    }
+
+    /**
+     * Fire TV (and any other plain-ADB device) has no discovery broadcast of
+     * its own — see [com.homecontrol.core.discovery.NetworkDeviceDiscoveryScanner],
+     * whose mDNS/SSDP/UDP probes only ever pick up devices that advertise
+     * themselves. This bypasses discovery entirely: the user already knows
+     * the IP and device type, so there's nothing left to detect.
+     */
+    fun addManualDevice(name: String, ipAddress: String, deviceType: DeviceType) {
+        pairDevice(
+            DiscoveredDevice(
+                discoveryId = "manual:$ipAddress",
+                name = name.ifBlank { deviceType.name },
+                ipAddress = ipAddress,
+                deviceTypeHint = deviceType,
+                discoveryProtocol = DiscoveryProtocol.MANUAL,
+            ),
+        )
     }
 
     fun pairDevice(device: DiscoveredDevice) {

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    PlayerView defaults to a SurfaceView for video output, which doesn't
+    resize cleanly when its container is resized directly by Compose (as
+    happens when a grid tile grows to fullscreen and shrinks back) — video
+    decoding was observed to silently freeze on the last frame after such a
+    resize while audio kept playing. TextureView is a regular View that
+    participates in normal layout/compositing and resizes correctly.
+-->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view"
+    app:use_controller="false" />

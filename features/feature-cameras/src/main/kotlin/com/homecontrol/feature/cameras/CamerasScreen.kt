@@ -9,16 +9,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -36,11 +40,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.homecontrol.feature.cameras.onvif.DiscoveredCamera
 
 /**
- * Quick experimental screen: cameras are added manually by IP/username/
- * password (there's no discovery — ONVIF cameras don't broadcast the same
- * way the TV/PC plugins' devices do) and stored locally, not in the shared
+ * Cameras are added either by searching the network (WS-Discovery finds the
+ * camera's real IP/ONVIF port automatically, still needs a username/password
+ * added by hand since discovery can't know those) or fully by hand for
+ * cameras discovery doesn't find. Stored locally, not in the shared
  * paired-devices database, since this isn't a real `IDevicePlugin` — just a
  * live RTSP viewer.
  */
@@ -49,27 +55,49 @@ import androidx.hilt.navigation.compose.hiltViewModel
 fun CamerasScreen(
     onBack: () -> Unit,
     onCameraClick: (CameraConfig) -> Unit,
+    onGridViewClick: () -> Unit,
     viewModel: CamerasViewModel = hiltViewModel(),
 ) {
     val cameras by viewModel.cameras.collectAsState()
-    var showAddDialog by remember { mutableStateOf(false) }
+    val isScanning by viewModel.isScanning.collectAsState()
+    val discoveredCameras by viewModel.discoveredCameras.collectAsState()
+    var showManualAddDialog by remember { mutableStateOf(false) }
+    var configuringDiscovered by remember { mutableStateOf<DiscoveredCamera?>(null) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Cameras") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    TextButton(onClick = onGridViewClick) { Text("Grid view") }
+                    TextButton(onClick = { showManualAddDialog = true }) { Text("Add manually") }
+                },
             )
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                text = { Text("Add camera") },
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                onClick = { showAddDialog = true },
+                text = { Text(if (isScanning) "Scanning…" else "Scan for cameras") },
+                icon = {
+                    if (isScanning) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Filled.Search, contentDescription = null)
+                    }
+                },
+                onClick = viewModel::startScan,
             )
         },
     ) { paddingValues ->
-        if (cameras.isEmpty()) {
+        val unconfiguredDiscovered = discoveredCameras.filter { discovered ->
+            cameras.none { it.ipAddress == discovered.ipAddress }
+        }
+
+        if (cameras.isEmpty() && unconfiguredDiscovered.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -78,7 +106,11 @@ fun CamerasScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "No cameras yet. Tap “Add camera” to add one by its IP address.",
+                    text = if (isScanning) {
+                        "Searching your network for cameras…"
+                    } else {
+                        "No cameras yet. Tap “Scan for cameras” to search your network, or “Add manually” if it isn't found."
+                    },
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -115,39 +147,86 @@ fun CamerasScreen(
                         }
                     }
                 }
+
+                if (unconfiguredDiscovered.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Found on your network",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                        )
+                    }
+                }
+                items(items = unconfiguredDiscovered, key = { it.ipAddress }) { discovered ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { configuringDiscovered = discovered },
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(text = discovered.ipAddress, style = MaterialTheme.typography.titleLarge)
+                            Text(
+                                text = "Tap to add — port ${discovered.port}",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 
-    if (showAddDialog) {
-        AddCameraDialog(
-            onDismiss = { showAddDialog = false },
+    if (showManualAddDialog) {
+        CameraConfigureDialog(
+            title = "Add camera",
+            initialIpAddress = "",
+            initialPort = 8000,
+            onDismiss = { showManualAddDialog = false },
             onConfirm = { name, ip, port, user, pass ->
                 viewModel.addCamera(name, ip, port, user, pass)
-                showAddDialog = false
+                showManualAddDialog = false
+            },
+        )
+    }
+
+    configuringDiscovered?.let { discovered ->
+        CameraConfigureDialog(
+            title = "Configure camera",
+            initialIpAddress = discovered.ipAddress,
+            initialPort = discovered.port,
+            onDismiss = { configuringDiscovered = null },
+            onConfirm = { name, ip, port, user, pass ->
+                viewModel.addCamera(name, ip, port, user, pass)
+                configuringDiscovered = null
             },
         )
     }
 }
 
 @Composable
-private fun AddCameraDialog(
+private fun CameraConfigureDialog(
+    title: String,
+    initialIpAddress: String,
+    initialPort: Int,
     onDismiss: () -> Unit,
     onConfirm: (name: String, ipAddress: String, onvifPort: Int, username: String, password: String) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
-    var ipAddress by remember { mutableStateOf("") }
+    var ipAddress by remember { mutableStateOf(initialIpAddress) }
     // 80 is the ONVIF spec default, but budget cameras routinely run it on
     // something else entirely (this exact SV3C unit turned out to be 8000,
-    // not the 80/8080/1018 its own documentation claims) — better to let
-    // this be found out per-camera than to hardcode a guess.
-    var onvifPort by remember { mutableStateOf("8000") }
+    // not the 80/8080/1018 its own documentation claims) — a camera found via
+    // network scan carries its own real port already; a manually-added one
+    // still has to guess, so this default remains the best-known starting point.
+    var onvifPort by remember { mutableStateOf(initialPort.toString()) }
     var username by remember { mutableStateOf("admin") }
     var password by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add camera") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name, e.g. Front Door") }, singleLine = true)
@@ -156,10 +235,10 @@ private fun AddCameraDialog(
                     onValueChange = { ipAddress = it },
                     label = { Text("IP address") },
                     singleLine = true,
-                    // Uri keyboard type + no autocorrect — a plain text field let
+                    // Decimal keyboard type + no autocorrect — a plain text field let
                     // autocorrect silently turn dots into spaces on a real device,
                     // which crashed the app instead of just failing to connect.
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, autoCorrectEnabled = false),
                 )
                 OutlinedTextField(
                     value = onvifPort,

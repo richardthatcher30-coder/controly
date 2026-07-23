@@ -10,6 +10,7 @@ android {
 
 dependencies {
     implementation(project(":core:designsystem"))
+    implementation(libs.androidx.activity.compose)
     implementation(libs.hilt.navigation.compose)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)

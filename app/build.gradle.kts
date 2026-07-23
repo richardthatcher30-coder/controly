@@ -7,6 +7,10 @@ plugins {
 android {
     namespace = "com.homecontrol.app"
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.homecontrol.app"
         versionCode = 1

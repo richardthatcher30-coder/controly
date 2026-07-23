@@ -25,6 +25,10 @@ data class DeviceCapabilities(
      */
     val supportsSourceCycle: Boolean = false,
     val supportsSmartHub: Boolean = false,
+    /** Rewind/play-pause/fast-forward keys are wired up — currently only [com.homecontrol.plugins.androidtv.AndroidTvPlugin]; Sony/Samsung's key maps don't include them, so this stays false there rather than showing dead buttons. */
+    val supportsMediaTransport: Boolean = false,
+    /** Same reasoning as [supportsMediaTransport] — a "Voice" button only makes sense where the plugin actually maps it to something. */
+    val supportsVoiceAssist: Boolean = false,
 ) {
     companion object {
         val NONE = DeviceCapabilities()

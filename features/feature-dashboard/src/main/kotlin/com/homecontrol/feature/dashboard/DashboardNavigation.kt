@@ -8,10 +8,18 @@ const val DASHBOARD_ROUTE = "dashboard"
 
 fun NavGraphBuilder.dashboardScreen(
     onAddDeviceClick: () -> Unit,
+    onAddCameraClick: () -> Unit,
     onDeviceClick: (PairedDevice) -> Unit,
     onCamerasClick: () -> Unit,
+    onAboutClick: () -> Unit,
 ) {
     composable(DASHBOARD_ROUTE) {
-        DashboardScreen(onAddDeviceClick = onAddDeviceClick, onDeviceClick = onDeviceClick, onCamerasClick = onCamerasClick)
+        DashboardScreen(
+            onAddDeviceClick = onAddDeviceClick,
+            onAddCameraClick = onAddCameraClick,
+            onDeviceClick = onDeviceClick,
+            onCamerasClick = onCamerasClick,
+            onAboutClick = onAboutClick,
+        )
     }
 }

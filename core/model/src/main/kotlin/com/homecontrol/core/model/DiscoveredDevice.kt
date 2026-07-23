@@ -25,4 +25,8 @@ enum class DiscoveryProtocol {
     MDNS,
     SSDP,
     UDP_BROADCAST,
+    // Devices reachable only over plain ADB (Fire TV included) don't advertise
+    // themselves over any of the above — there's no zero-config broadcast for
+    // ADB debugging, so those are added by IP address instead of discovered.
+    MANUAL,
 }

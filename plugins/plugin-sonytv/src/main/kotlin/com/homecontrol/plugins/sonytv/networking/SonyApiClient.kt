@@ -157,7 +157,13 @@ internal class SonyApiClient(private val ipAddress: String) {
      * numbering and which inputs even exist varies per model.
      */
     fun getExternalInputs(): List<Pair<String, String>>? {
-        val result = call("avContent", "getCurrentExternalTerminalsStatus") as? JsonObject ?: return null
+        // Confirmed via this TV's own getMethodTypes listing — the method is
+        // named "...Inputs...", not "...Terminals..." as some Sony API docs
+        // and reference code elsewhere call it. The wrong name doesn't 404;
+        // it comes back as {"error":[12,"..."]} ("Illegal Argument"), which
+        // silently looked identical to "TV has no inputs" further up the
+        // stack until this was queried directly against the real device.
+        val result = call("avContent", "getCurrentExternalInputsStatus") as? JsonObject ?: return null
         val terminals = result["result"]?.jsonArray?.getOrNull(0)?.jsonArray ?: return null
         return terminals.mapNotNull { entry ->
             val obj = entry as? JsonObject ?: return@mapNotNull null
