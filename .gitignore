@@ -16,3 +16,4 @@ out/
 *.hprof
 .claude/settings.local.json
 windows-companion/installer/output/
+windows-companion/src/HomeControl.Companion/publish/
