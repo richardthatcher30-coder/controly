@@ -91,8 +91,10 @@ private fun RtspPlayer(rtspUrl: String) {
         // opens, letting every one of those get silently redirected to the
         // camera's real address regardless of which stage of the RTSP
         // handshake asked for "localhost".
-        val realHost = Uri.parse(rtspUrl).host
-        val socketFactory = if (realHost != null) LocalhostRedirectingSocketFactory(realHost) else SocketFactory.getDefault()
+        val realUri = Uri.parse(rtspUrl)
+        val realHost = realUri.host
+        val realPort = realUri.port.takeIf { it > 0 } ?: 554
+        val socketFactory = if (realHost != null) LocalhostRedirectingSocketFactory(realHost, realPort) else SocketFactory.getDefault()
 
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(RtspMediaSource.Factory().setSocketFactory(socketFactory))
@@ -141,37 +143,36 @@ private fun RtspPlayer(rtspUrl: String) {
 }
 
 /** Redirects any connection aimed at localhost/127.0.0.1 to [realHost] instead — see the comment where this is constructed for why that's needed. */
-private class LocalhostRedirectingSocketFactory(private val realHost: String) : SocketFactory() {
+private class LocalhostRedirectingSocketFactory(
+    private val realHost: String,
+    private val realPort: Int,
+) : SocketFactory() {
 
-    override fun createSocket(): Socket {
-        android.util.Log.d("CameraViewScreen", "SocketFactory.createSocket() [no-arg]")
-        return Socket()
-    }
+    override fun createSocket(): Socket = Socket()
 
-    override fun createSocket(host: String, port: Int): Socket {
-        android.util.Log.d("CameraViewScreen", "SocketFactory.createSocket(host=$host, port=$port) -> ${rewrite(host)}")
-        return Socket(rewrite(host), port)
-    }
+    override fun createSocket(host: String, port: Int): Socket =
+        Socket(rewriteHost(host), rewritePort(host, port))
 
-    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket {
-        android.util.Log.d("CameraViewScreen", "SocketFactory.createSocket(host=$host, port=$port, local) -> ${rewrite(host)}")
-        return Socket(rewrite(host), port, localHost, localPort)
-    }
+    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket =
+        Socket(rewriteHost(host), rewritePort(host, port), localHost, localPort)
 
-    override fun createSocket(address: InetAddress, port: Int): Socket {
-        android.util.Log.d("CameraViewScreen", "SocketFactory.createSocket(address=$address, port=$port)")
-        return Socket(address, port)
-    }
+    override fun createSocket(address: InetAddress, port: Int): Socket = Socket(address, port)
 
-    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket {
-        android.util.Log.d("CameraViewScreen", "SocketFactory.createSocket(address=$address, port=$port, local)")
-        return Socket(address, port, localAddress, localPort)
-    }
+    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket =
+        Socket(address, port, localAddress, localPort)
 
-    // The camera's SDP actually has an *empty* host (e.g. "rtsp://:554/..."),
-    // confirmed via logging — Java's Socket/InetAddress silently treats an
-    // empty host as the loopback address, which is why the error reported
-    // "localhost/127.0.0.1" even though the literal string was never that.
-    private fun rewrite(host: String): String =
-        if (host.isEmpty() || host.equals("localhost", ignoreCase = true) || host == "127.0.0.1") realHost else host
+    // The camera's SDP actually has an *empty* host and the RTSP default port
+    // (e.g. "rtsp://:554/..."), confirmed via logging — Java's Socket/InetAddress
+    // silently treats an empty host as the loopback address, which is why the
+    // error reported "localhost/127.0.0.1" even though the literal string was
+    // never that. Once the host is rewritten to the camera's real address, the
+    // port from that same broken session (554) also needs rewriting to the
+    // camera's actual RTSP port (8554 on this camera) — the two are set together
+    // by the firmware bug, so both get corrected whenever either looks broken.
+    private fun isBrokenSessionHost(host: String) =
+        host.isEmpty() || host.equals("localhost", ignoreCase = true) || host == "127.0.0.1"
+
+    private fun rewriteHost(host: String): String = if (isBrokenSessionHost(host)) realHost else host
+
+    private fun rewritePort(host: String, port: Int): Int = if (isBrokenSessionHost(host)) realPort else port
 }
