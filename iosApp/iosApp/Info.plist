@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Controly</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<!--
+	  Added ahead of Phase 8 (voice dictation + LAN discovery), rather than left
+	  for later — a build that does any local-network/mDNS/socket work without
+	  these already present is silently denied by iOS with no prompt at all,
+	  which is a much more confusing failure to debug than "unused permission
+	  string sitting in Info.plist early."
+	-->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Controly discovers and connects directly to TVs, PCs, and cameras on your local network to control them.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_androidtvremote2._tcp</string>
+		<string>_googlecast._tcp</string>
+		<string>_homecontrol._tcp</string>
+	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Controly uses the microphone for voice dictation, sent live to the connected PC.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Controly uses speech recognition to convert your voice into text sent to the connected PC.</string>
+</dict>
+</plist>

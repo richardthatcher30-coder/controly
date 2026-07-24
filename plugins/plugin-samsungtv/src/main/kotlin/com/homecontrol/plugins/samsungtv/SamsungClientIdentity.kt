@@ -1,11 +1,8 @@
 package com.homecontrol.plugins.samsungtv
 
 import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.UUID
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * A stable per-install identifier sent as the legacy protocol's `id` field
@@ -18,8 +15,7 @@ import javax.inject.Singleton
  * this reverse-engineered protocol) — it needs testing against real
  * hardware to know for sure.
  */
-@Singleton
-class SamsungClientIdentity @Inject constructor(@ApplicationContext context: Context) {
+class SamsungClientIdentity(context: Context) {
 
     private val file = File(context.filesDir, "samsung_client_id.txt")
 

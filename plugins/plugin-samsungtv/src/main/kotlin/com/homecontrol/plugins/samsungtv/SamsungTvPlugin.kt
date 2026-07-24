@@ -15,8 +15,6 @@ import com.homecontrol.core.pluginapi.IDevicePlugin
 import com.homecontrol.plugins.samsungtv.networking.SamsungLegacyClient
 import com.homecontrol.plugins.samsungtv.networking.SamsungLegacyOutcome
 import java.util.concurrent.ConcurrentHashMap
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -59,8 +57,7 @@ private const val PLUGIN_ID = "samsungtv"
  * - No free-text keyboard input or installed-app list — Samsung exposes
  *   those through separate, more involved APIs not implemented here.
  */
-@Singleton
-class SamsungTvPlugin @Inject constructor(
+class SamsungTvPlugin(
     private val clientIdentity: SamsungClientIdentity,
 ) : IDevicePlugin {
 

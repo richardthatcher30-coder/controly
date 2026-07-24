@@ -2,15 +2,9 @@ package com.homecontrol.core.discovery.di
 
 import com.homecontrol.core.discovery.DeviceDiscoveryScanner
 import com.homecontrol.core.discovery.NetworkDeviceDiscoveryScanner
-import dagger.Binds
-import dagger.Module
-import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
+import org.koin.android.ext.koin.androidContext
+import org.koin.dsl.module
 
-@Module
-@InstallIn(SingletonComponent::class)
-abstract class DiscoveryModule {
-
-    @Binds
-    abstract fun bindDeviceDiscoveryScanner(impl: NetworkDeviceDiscoveryScanner): DeviceDiscoveryScanner
+val discoveryModule = module {
+    single<DeviceDiscoveryScanner> { NetworkDeviceDiscoveryScanner(androidContext()) }
 }

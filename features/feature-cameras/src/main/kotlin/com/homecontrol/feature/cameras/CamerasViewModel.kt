@@ -4,8 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homecontrol.feature.cameras.onvif.DiscoveredCamera
 import com.homecontrol.feature.cameras.onvif.OnvifDiscoveryScanner
-import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,8 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-@HiltViewModel
-class CamerasViewModel @Inject constructor(
+class CamerasViewModel(
     private val store: CameraStore,
     private val discoveryScanner: OnvifDiscoveryScanner,
 ) : ViewModel() {

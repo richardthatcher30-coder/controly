@@ -7,7 +7,6 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import javax.inject.Inject
 
 private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 private const val KEY_ALIAS = "homecontrol_master_key"
@@ -22,7 +21,7 @@ private const val AES_KEY_SIZE_BITS = 256
  * itself never leaves secure hardware/TEE where the device provides one;
  * only ciphertext is ever written to disk.
  */
-class KeystoreCipher @Inject constructor() {
+class KeystoreCipher {
 
     private val keyStore: KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 

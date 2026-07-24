@@ -6,7 +6,6 @@ import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import com.homecontrol.core.model.DiscoveredDevice
 import com.homecontrol.core.model.DiscoveryProtocol
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
@@ -17,7 +16,6 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.MulticastSocket
-import javax.inject.Inject
 
 private const val SCAN_DURATION_MS = 8_000L
 private const val SSDP_MULTICAST_ADDRESS = "239.255.255.250"
@@ -38,8 +36,8 @@ private val MDNS_SERVICE_TYPES = listOf(
  * A [WifiManager.MulticastLock] is held for the duration — without it, many
  * devices silently drop the multicast traffic mDNS/SSDP depend on.
  */
-class NetworkDeviceDiscoveryScanner @Inject constructor(
-    @ApplicationContext private val context: Context,
+class NetworkDeviceDiscoveryScanner(
+    private val context: Context,
 ) : DeviceDiscoveryScanner {
 
     override fun scan(): Flow<DiscoveredDevice> = callbackFlow {

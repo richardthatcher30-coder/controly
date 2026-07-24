@@ -6,7 +6,6 @@ import java.net.InetAddress
 import java.net.MulticastSocket
 import java.net.URI
 import java.util.UUID
-import javax.inject.Inject
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -36,7 +35,7 @@ data class DiscoveredCamera(
  * SSDP probe (same blocking-receive-loop-inside-runCatching shape) for
  * consistency, since the two protocols are structurally very similar.
  */
-class OnvifDiscoveryScanner @Inject constructor() {
+class OnvifDiscoveryScanner {
 
     fun scan(): Flow<DiscoveredCamera> = callbackFlow {
         val probeJob = launch(Dispatchers.IO) { probe { camera -> trySend(camera) } }

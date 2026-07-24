@@ -26,8 +26,6 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
@@ -52,8 +50,7 @@ private const val WAKE_ON_LAN_PORT = 9
  * interface's power methods, even though the companion already implements
  * restart/sleep too.
  */
-@Singleton
-class WindowsPlugin @Inject constructor(
+class WindowsPlugin(
     private val keyStore: CompanionKeyStore,
     private val deviceStore: WindowsDeviceStore,
 ) : IDevicePlugin {

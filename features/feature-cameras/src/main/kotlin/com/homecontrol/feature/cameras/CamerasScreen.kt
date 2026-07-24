@@ -39,7 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import org.koin.compose.viewmodel.koinViewModel
 import com.homecontrol.feature.cameras.onvif.DiscoveredCamera
 
 /**
@@ -56,7 +56,7 @@ fun CamerasScreen(
     onBack: () -> Unit,
     onCameraClick: (CameraConfig) -> Unit,
     onGridViewClick: () -> Unit,
-    viewModel: CamerasViewModel = hiltViewModel(),
+    viewModel: CamerasViewModel = koinViewModel(),
 ) {
     val cameras by viewModel.cameras.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()

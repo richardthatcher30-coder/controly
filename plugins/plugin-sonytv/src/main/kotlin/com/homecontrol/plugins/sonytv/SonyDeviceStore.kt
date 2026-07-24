@@ -1,10 +1,7 @@
 package com.homecontrol.plugins.sonytv
 
 import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -21,8 +18,7 @@ data class SonyDeviceRecord(
     val clientId: String,
 )
 
-@Singleton
-class SonyDeviceStore @Inject constructor(@ApplicationContext context: Context) {
+class SonyDeviceStore(context: Context) {
 
     private val file = File(context.filesDir, "sony_devices.json")
     private val json = Json { ignoreUnknownKeys = true }

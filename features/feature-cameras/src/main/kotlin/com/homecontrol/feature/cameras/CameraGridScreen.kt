@@ -41,7 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import org.koin.compose.viewmodel.koinViewModel
 
 /**
  * A configurable multi-camera grid: pick how many tiles (1/2/4/6), tap a
@@ -52,7 +52,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @Composable
 fun CameraGridScreen(
     onBack: () -> Unit,
-    viewModel: CameraGridViewModel = hiltViewModel(),
+    viewModel: CameraGridViewModel = koinViewModel(),
 ) {
     val cameras by viewModel.cameras.collectAsState()
     val grid by viewModel.grid.collectAsState()

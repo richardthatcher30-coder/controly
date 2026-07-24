@@ -9,14 +9,12 @@ import com.homecontrol.core.model.DiscoveredDevice
 import com.homecontrol.core.model.DiscoveryProtocol
 import com.homecontrol.core.model.PairingInput
 import com.homecontrol.core.model.PairingResult
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 data class DevicesUiState(
     val isScanning: Boolean = false,
@@ -40,8 +38,7 @@ sealed interface PairingUiState {
     data class Failed(val deviceName: String, val reason: String) : PairingUiState
 }
 
-@HiltViewModel
-class DevicesViewModel @Inject constructor(
+class DevicesViewModel(
     private val scanner: DeviceDiscoveryScanner,
     private val pairedDeviceRepository: PairedDeviceRepository,
 ) : ViewModel() {

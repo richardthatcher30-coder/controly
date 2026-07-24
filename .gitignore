@@ -19,3 +19,4 @@ windows-companion/installer/output/
 windows-companion/src/HomeControl.Companion/publish/
 /certificates/
 /certificates.zip
+/keystore/

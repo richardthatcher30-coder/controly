@@ -21,8 +21,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
-import javax.inject.Inject
-import javax.inject.Singleton
 
 private const val PLUGIN_ID = "androidtv"
 private val SONY_MODEL_PREFIXES = listOf("kd-", "kdl-", "xr-", "xbr-")
@@ -34,8 +32,7 @@ private val SONY_MODEL_PREFIXES = listOf("kd-", "kdl-", "xr-", "xbr-")
  * `plugins/plugin-androidtv/src/main/kotlin/.../adb/AdbConnection.kt` for
  * the wire protocol itself.
  */
-@Singleton
-class AndroidTvPlugin @Inject constructor(
+class AndroidTvPlugin(
     private val keyStore: AdbKeyStore,
 ) : IDevicePlugin {
 

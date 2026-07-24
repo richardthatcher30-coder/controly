@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.homecontrol.android.library)
-    alias(libs.plugins.homecontrol.android.hilt)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -12,4 +12,5 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+    implementation(libs.koin.android)
 }

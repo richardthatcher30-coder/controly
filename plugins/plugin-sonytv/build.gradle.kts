@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.homecontrol.android.library)
-    alias(libs.plugins.homecontrol.android.hilt)
     alias(libs.plugins.kotlin.serialization)
 }
 
@@ -13,4 +12,5 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+    implementation(libs.koin.android)
 }

@@ -112,7 +112,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.hilt.navigation.compose.hiltViewModel
+import org.koin.compose.viewmodel.koinViewModel
 import com.homecontrol.core.model.AppInfo
 import com.homecontrol.core.model.DeviceCapabilities
 import com.homecontrol.core.model.MouseButton
@@ -124,7 +124,7 @@ import kotlin.math.roundToInt
 fun RemoteScreen(
     onBack: () -> Unit,
     onSettingsClick: () -> Unit,
-    viewModel: RemoteViewModel = hiltViewModel(),
+    viewModel: RemoteViewModel = koinViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val device = uiState.device

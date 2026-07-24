@@ -2,15 +2,12 @@ package com.homecontrol.plugins.androidtv.adb
 
 import android.content.Context
 import com.homecontrol.core.security.KeystoreCipher
-import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
-import javax.inject.Inject
-import javax.inject.Singleton
 
 private const val KEY_FILE_NAME = "adb_keypair.enc"
 private const val RSA_KEY_SIZE_BITS = 2048
@@ -23,9 +20,8 @@ private const val RSA_KEY_SIZE_BITS = 2048
  * ADB auth handshake needs a raw "NONEwithRSA" signature that Keystore-backed
  * keys don't reliably support across devices.
  */
-@Singleton
-class AdbKeyStore @Inject constructor(
-    @ApplicationContext private val context: Context,
+class AdbKeyStore(
+    private val context: Context,
     private val cipher: KeystoreCipher,
 ) {
 

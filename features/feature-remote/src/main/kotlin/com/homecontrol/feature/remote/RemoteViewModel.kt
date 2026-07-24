@@ -10,8 +10,6 @@ import com.homecontrol.core.model.ConnectionResult
 import com.homecontrol.core.model.MouseButton
 import com.homecontrol.core.model.PairedDevice
 import com.homecontrol.core.model.RemoteKey
-import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,8 +27,7 @@ data class RemoteUiState(
     val connectionError: String? = null,
 )
 
-@HiltViewModel
-class RemoteViewModel @Inject constructor(
+class RemoteViewModel(
     savedStateHandle: SavedStateHandle,
     private val pairedDeviceRepository: PairedDeviceRepository,
     private val remoteControlRepository: RemoteControlRepository,

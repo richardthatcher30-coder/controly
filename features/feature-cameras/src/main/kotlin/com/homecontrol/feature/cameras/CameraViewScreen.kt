@@ -21,13 +21,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import org.koin.compose.viewmodel.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CameraViewScreen(
     onBack: () -> Unit,
-    viewModel: CameraViewModel = hiltViewModel(),
+    viewModel: CameraViewModel = koinViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
 

@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.homecontrol.android.library)
-    alias(libs.plugins.homecontrol.android.hilt)
 }
 
 android {
@@ -13,4 +12,5 @@ dependencies {
     implementation(project(":plugins:plugin-windows"))
     implementation(project(":plugins:plugin-sonytv"))
     implementation(project(":plugins:plugin-samsungtv"))
+    implementation(libs.koin.core)
 }

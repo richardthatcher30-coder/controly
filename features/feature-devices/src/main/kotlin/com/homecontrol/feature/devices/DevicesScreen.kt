@@ -43,7 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import org.koin.compose.viewmodel.koinViewModel
 import com.homecontrol.core.model.DeviceType
 import com.homecontrol.core.model.DiscoveredDevice
 
@@ -51,7 +51,7 @@ import com.homecontrol.core.model.DiscoveredDevice
 @Composable
 fun DevicesScreen(
     onBack: () -> Unit,
-    viewModel: DevicesViewModel = hiltViewModel(),
+    viewModel: DevicesViewModel = koinViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showManualAddDialog by rememberSaveable { mutableStateOf(false) }

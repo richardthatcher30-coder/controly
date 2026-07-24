@@ -1,14 +1,11 @@
 package com.homecontrol.feature.cameras
 
 import androidx.lifecycle.ViewModel
-import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-@HiltViewModel
-class CameraGridViewModel @Inject constructor(
+class CameraGridViewModel(
     private val cameraStore: CameraStore,
     private val gridStore: CameraGridStore,
 ) : ViewModel() {

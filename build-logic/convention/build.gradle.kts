@@ -14,8 +14,8 @@ dependencies {
     compileOnly(libs.android.gradlePlugin)
     compileOnly(libs.kotlin.gradlePlugin)
     compileOnly(libs.compose.gradlePlugin)
+    compileOnly(libs.compose.multiplatform.gradlePlugin)
     compileOnly(libs.ksp.gradlePlugin)
-    compileOnly(libs.hilt.gradlePlugin)
 }
 
 gradlePlugin {
@@ -28,10 +28,6 @@ gradlePlugin {
             id = "homecontrol.android.library"
             implementationClass = "com.homecontrol.buildlogic.AndroidLibraryConventionPlugin"
         }
-        register("androidHilt") {
-            id = "homecontrol.android.hilt"
-            implementationClass = "com.homecontrol.buildlogic.AndroidHiltConventionPlugin"
-        }
         register("androidCompose") {
             id = "homecontrol.android.compose"
             implementationClass = "com.homecontrol.buildlogic.AndroidComposeConventionPlugin"
@@ -43,6 +39,14 @@ gradlePlugin {
         register("jvmLibrary") {
             id = "homecontrol.jvm.library"
             implementationClass = "com.homecontrol.buildlogic.JvmLibraryConventionPlugin"
+        }
+        register("kmpLibrary") {
+            id = "homecontrol.kmp.library"
+            implementationClass = "com.homecontrol.buildlogic.KmpLibraryConventionPlugin"
+        }
+        register("kmpCompose") {
+            id = "homecontrol.kmp.compose"
+            implementationClass = "com.homecontrol.buildlogic.KmpComposeConventionPlugin"
         }
     }
 }

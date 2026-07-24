@@ -12,9 +12,8 @@ import com.homecontrol.core.model.PairingResult
 import com.homecontrol.core.pluginapi.PluginRegistry
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import javax.inject.Inject
 
-class PairedDeviceRepositoryImpl @Inject constructor(
+class PairedDeviceRepositoryImpl(
     private val dao: PairedDeviceDao,
     private val pluginRegistry: PluginRegistry,
 ) : PairedDeviceRepository {

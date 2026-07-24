@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.homecontrol.android.feature)
-    alias(libs.plugins.homecontrol.android.hilt)
 }
 
 android {
@@ -12,5 +11,6 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:discovery"))
     implementation(project(":core:data"))
-    implementation(libs.hilt.navigation.compose)
+    implementation(libs.koin.compose)
+    implementation(libs.koin.compose.viewmodel)
 }

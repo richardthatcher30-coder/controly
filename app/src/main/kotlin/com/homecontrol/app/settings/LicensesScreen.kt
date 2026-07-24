@@ -10,7 +10,7 @@ private val LIBRARIES = listOf(
     OssLibrary("AndroidX Room", "Apache License 2.0"),
     OssLibrary("AndroidX Media3 (ExoPlayer)", "Apache License 2.0"),
     OssLibrary("AndroidX Security Crypto", "Apache License 2.0"),
-    OssLibrary("Dagger / Hilt", "Apache License 2.0"),
+    OssLibrary("Koin", "Apache License 2.0"),
     OssLibrary("Kotlin & kotlinx.coroutines", "Apache License 2.0"),
     OssLibrary("kotlinx.serialization", "Apache License 2.0"),
     OssLibrary("Ktor", "Apache License 2.0"),

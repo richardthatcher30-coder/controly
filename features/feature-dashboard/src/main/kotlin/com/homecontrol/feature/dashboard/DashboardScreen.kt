@@ -52,7 +52,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import org.koin.compose.viewmodel.koinViewModel
 import com.homecontrol.core.designsystem.R
 import com.homecontrol.core.model.DeviceType
 import com.homecontrol.core.model.PairedDevice
@@ -72,7 +72,7 @@ fun DashboardScreen(
     onDeviceClick: (PairedDevice) -> Unit,
     onCamerasClick: () -> Unit,
     onAboutClick: () -> Unit,
-    viewModel: DashboardViewModel = hiltViewModel(),
+    viewModel: DashboardViewModel = koinViewModel(),
 ) {
     val pairedDevices by viewModel.pairedDevices.collectAsState()
     var showAddPicker by remember { mutableStateOf(false) }

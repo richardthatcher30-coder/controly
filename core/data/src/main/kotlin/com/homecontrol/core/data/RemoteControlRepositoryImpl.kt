@@ -6,9 +6,8 @@ import com.homecontrol.core.model.MouseButton
 import com.homecontrol.core.model.PairedDevice
 import com.homecontrol.core.model.RemoteKey
 import com.homecontrol.core.pluginapi.PluginRegistry
-import javax.inject.Inject
 
-class RemoteControlRepositoryImpl @Inject constructor(
+class RemoteControlRepositoryImpl(
     private val pluginRegistry: PluginRegistry,
 ) : RemoteControlRepository {
 

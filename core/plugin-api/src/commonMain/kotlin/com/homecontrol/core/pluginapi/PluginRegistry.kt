@@ -4,10 +4,10 @@ import com.homecontrol.core.model.DiscoveredDevice
 
 /**
  * Aggregates every [IDevicePlugin] the app knows about. The concrete
- * implementation lives in `plugins:plugin-registry`, backed by Hilt
- * multibinding of one [IDevicePlugin] per plugin module — this interface is
- * what `core:data` depends on instead, so the data layer never needs a
- * dependency on any individual plugin module.
+ * implementation lives in `plugins:plugin-registry`, backed by Koin's
+ * `getAll<IDevicePlugin>()` collecting one binding per plugin module — this
+ * interface is what `core:data` depends on instead, so the data layer never
+ * needs a dependency on any individual plugin module.
  */
 interface PluginRegistry {
 

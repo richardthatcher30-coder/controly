@@ -3,17 +3,15 @@ package com.homecontrol.plugins.registry
 import com.homecontrol.core.model.DiscoveredDevice
 import com.homecontrol.core.pluginapi.IDevicePlugin
 import com.homecontrol.core.pluginapi.PluginRegistry
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * The only class in the app that depends on every concrete plugin module —
- * add a new device plugin by adding one `@Binds @IntoSet` in
- * [PluginRegistryModule] and one dependency line here, nothing else changes.
+ * add a new device plugin by adding one `single<IDevicePlugin>(named(...))`
+ * binding in that plugin's own Koin module and one dependency line in
+ * `pluginRegistryModule`, nothing else changes.
  */
-@Singleton
-class PluginRegistryImpl @Inject constructor(
-    private val devicePlugins: Set<@JvmSuppressWildcards IDevicePlugin>,
+class PluginRegistryImpl(
+    private val devicePlugins: Set<IDevicePlugin>,
 ) : PluginRegistry {
 
     override val plugins: Set<IDevicePlugin> = devicePlugins

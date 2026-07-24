@@ -16,8 +16,6 @@ import com.homecontrol.plugins.sonytv.networking.RegistrationOutcome
 import com.homecontrol.plugins.sonytv.networking.SonyApiClient
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -55,8 +53,7 @@ private data class PendingRegistration(val client: SonyApiClient, val clientId: 
  *   returns for a given app, not a friendly name — `supportsApps` is left
  *   false rather than exposing custom app buttons that would mostly fail.
  */
-@Singleton
-class SonyTvPlugin @Inject constructor(
+class SonyTvPlugin(
     private val deviceStore: SonyDeviceStore,
 ) : IDevicePlugin {
 

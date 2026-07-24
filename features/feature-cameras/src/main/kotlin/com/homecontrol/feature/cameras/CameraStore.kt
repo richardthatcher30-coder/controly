@@ -1,16 +1,12 @@
 package com.homecontrol.feature.cameras
 
 import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.UUID
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.serialization.json.Json
 
 /** Plain local JSON storage for added cameras — this is a quick experiment, not wired into the shared Room database. */
-@Singleton
-class CameraStore @Inject constructor(@ApplicationContext context: Context) {
+class CameraStore(context: Context) {
 
     private val file = File(context.filesDir, "cameras.json")
     private val json = Json { ignoreUnknownKeys = true }

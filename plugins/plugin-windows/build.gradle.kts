@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.homecontrol.android.library)
-    alias(libs.plugins.homecontrol.android.hilt)
     alias(libs.plugins.kotlin.serialization)
 }
 
@@ -16,4 +15,5 @@ dependencies {
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.websockets)
+    implementation(libs.koin.android)
 }

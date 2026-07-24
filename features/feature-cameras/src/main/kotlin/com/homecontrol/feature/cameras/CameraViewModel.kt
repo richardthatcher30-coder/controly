@@ -3,8 +3,6 @@ package com.homecontrol.feature.cameras
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,8 +14,7 @@ sealed interface StreamUiState {
     data class Failed(val message: String) : StreamUiState
 }
 
-@HiltViewModel
-class CameraViewModel @Inject constructor(
+class CameraViewModel(
     savedStateHandle: SavedStateHandle,
     private val store: CameraStore,
 ) : ViewModel() {

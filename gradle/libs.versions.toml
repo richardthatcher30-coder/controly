@@ -6,7 +6,6 @@ agp = "9.2.0"
 kotlin = "2.3.20"
 ksp = "2.3.10"
 composeBom = "2026.04.01"
-hilt = "2.60.1"
 room = "2.8.4"
 ktor = "3.4.0"
 okhttp = "5.4.0"
@@ -16,13 +15,24 @@ coroutines = "1.9.0"
 lifecycle = "2.8.7"
 navigationCompose = "2.8.5"
 activityCompose = "1.10.0"
-hiltNavigationCompose = "1.2.0"
 splashscreen = "1.0.1"
 securityCrypto = "1.1.0-alpha06"
 media3 = "1.10.0"
 junit = "4.13.2"
 androidxTestExtJunit = "1.2.1"
 espressoCore = "3.6.1"
+# --- Added for the iOS/Kotlin-Multiplatform port. Versions below are best-known
+# at authoring time but NOT independently verified against the live Maven
+# registry from this (Windows, no internet package-index access) environment —
+# treat these the same as the AGP/Kotlin note above: let Gradle sync / Android
+# Studio's Upgrade Assistant correct the exact patch version if it flags a
+# mismatch, rather than assuming these are exactly right.
+composeMultiplatform = "1.9.0"
+koin = "4.1.0"
+cryptographyKotlin = "0.5.0"
+datastore = "1.1.7"
+xmlutil = "0.90.3"
+okio = "3.9.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -45,9 +55,6 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
-hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
-hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltNavigationCompose" }
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
 ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
 ktor-client-websockets = { group = "io.ktor", name = "ktor-client-websockets", version.ref = "ktor" }
@@ -63,12 +70,27 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 
+# --- KMP/iOS port additions ---
+koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
+koin-compose = { group = "io.insert-koin", name = "koin-compose", version.ref = "koin" }
+koin-compose-viewmodel = { group = "io.insert-koin", name = "koin-compose-viewmodel", version.ref = "koin" }
+koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
+cryptography-core = { group = "dev.whyoleg.cryptography", name = "cryptography-core", version.ref = "cryptographyKotlin" }
+cryptography-provider-jdk = { group = "dev.whyoleg.cryptography", name = "cryptography-provider-jdk", version.ref = "cryptographyKotlin" }
+cryptography-provider-apple = { group = "dev.whyoleg.cryptography", name = "cryptography-provider-apple", version.ref = "cryptographyKotlin" }
+androidx-datastore-preferences-core = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }
+androidx-datastore-core-okio = { group = "androidx.datastore", name = "datastore-core-okio", version.ref = "datastore" }
+xmlutil-core = { group = "io.github.pdvrieze.xmlutil", name = "core", version.ref = "xmlutil" }
+xmlutil-serialization = { group = "io.github.pdvrieze.xmlutil", name = "serialization", version.ref = "xmlutil" }
+okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" }
+ktor-client-darwin = { group = "io.ktor", name = "ktor-client-darwin", version.ref = "ktor" }
+
 # Used only inside build-logic to put these plugins on its own classpath.
 android-gradlePlugin = { group = "com.android.tools.build", name = "gradle", version.ref = "agp" }
 kotlin-gradlePlugin = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }
 compose-gradlePlugin = { group = "org.jetbrains.kotlin", name = "compose-compiler-gradle-plugin", version.ref = "kotlin" }
+compose-multiplatform-gradlePlugin = { group = "org.jetbrains.compose", name = "compose-gradle-plugin", version.ref = "composeMultiplatform" }
 ksp-gradlePlugin = { group = "com.google.devtools.ksp", name = "com.google.devtools.ksp.gradle.plugin", version.ref = "ksp" }
-hilt-gradlePlugin = { group = "com.google.dagger", name = "hilt-android-gradle-plugin", version.ref = "hilt" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -76,15 +98,17 @@ android-library = { id = "com.android.library", version.ref = "agp" }
 # No "kotlin-android" entry: AGP 9's built-in Kotlin support means the
 # org.jetbrains.kotlin.android plugin is no longer applied anywhere in this project.
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
-hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 
 # Our own convention plugins, resolved via includeBuild("build-logic") — no version needed.
 homecontrol-android-application = { id = "homecontrol.android.application" }
 homecontrol-android-library = { id = "homecontrol.android.library" }
-homecontrol-android-hilt = { id = "homecontrol.android.hilt" }
 homecontrol-android-compose = { id = "homecontrol.android.compose" }
 homecontrol-android-feature = { id = "homecontrol.android.feature" }
 homecontrol-jvm-library = { id = "homecontrol.jvm.library" }
+homecontrol-kmp-library = { id = "homecontrol.kmp.library" }
+homecontrol-kmp-compose = { id = "homecontrol.kmp.compose" }

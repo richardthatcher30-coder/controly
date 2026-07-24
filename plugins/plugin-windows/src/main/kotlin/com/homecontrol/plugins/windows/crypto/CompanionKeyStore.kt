@@ -2,7 +2,6 @@ package com.homecontrol.plugins.windows.crypto
 
 import android.content.Context
 import com.homecontrol.core.security.KeystoreCipher
-import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.security.KeyFactory
 import java.security.KeyPair
@@ -10,8 +9,6 @@ import java.security.KeyPairGenerator
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
-import javax.inject.Inject
-import javax.inject.Singleton
 
 private const val KEY_FILE_NAME = "windows_companion_keypair.enc"
 private const val CURVE_NAME = "secp256r1" // NIST P-256, matches the companion's ECDiffieHellman curve
@@ -21,9 +18,8 @@ private const val CURVE_NAME = "secp256r1" // NIST P-256, matches the companion'
  * generated once and reused for every paired PC, mirroring how
  * `plugin-androidtv`'s `AdbKeyStore` reuses one RSA keypair for every TV.
  */
-@Singleton
-class CompanionKeyStore @Inject constructor(
-    @ApplicationContext private val context: Context,
+class CompanionKeyStore(
+    private val context: Context,
     private val cipher: KeystoreCipher,
 ) {
 
