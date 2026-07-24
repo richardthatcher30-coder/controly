@@ -1,0 +1,81 @@
+workflows:
+  # Fast, unsigned compile-bar check — confirms the Kotlin/Native framework
+  # links and Xcode can build against it, without touching any signing
+  # configuration at all. Use this for day-to-day iteration.
+  ios-debug:
+    name: iOS Debug (unsigned compile check)
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      groups: []
+      vars:
+        XCODE_WORKSPACE: "iosApp/iosApp.xcodeproj"
+        XCODE_SCHEME: "iosApp"
+    scripts:
+      - name: Build Kotlin/Native framework (debug, simulator)
+        script: |
+          ./gradlew :ios:linkDebugFrameworkIosSimulatorArm64
+      - name: Build Xcode project for the simulator (unsigned)
+        script: |
+          xcodebuild build \
+            -project "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "generic/platform=iOS Simulator" \
+            CODE_SIGNING_ALLOWED=NO
+
+  # Signed release build + optional TestFlight publish. Every credential
+  # referenced below ($APP_STORE_CONNECT_*, $CERTIFICATE_PRIVATE_KEY, etc.) is
+  # a CodeMagic encrypted environment variable/group that YOU set up in the
+  # CodeMagic UI (Teams > Environment variables, or App settings > Environment
+  # variables) — nothing here ever contains, sees, or needs an actual
+  # credential value. See:
+  # https://docs.codemagic.io/yaml-code-signing/signing-ios/ for how to
+  # generate and upload an App Store Connect API key.
+  ios-release:
+    name: iOS Release (signed, App Store Connect)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.controly.controlymobile
+      groups:
+        - app_store_connect # holds APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_PRIVATE_KEY
+      vars:
+        XCODE_WORKSPACE: "iosApp/iosApp.xcodeproj"
+        XCODE_SCHEME: "iosApp"
+    scripts:
+      - name: Build Kotlin/Native framework (release, device)
+        script: |
+          ./gradlew :ios:linkReleaseFrameworkIosArm64
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$(xcode-project detect-bundle-id)" \
+            --type IOS_APP_STORE \
+            --create
+      - name: Use signing files
+        script: |
+          xcode-project use-profiles
+      - name: Build and archive the app
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      # Left commented out deliberately — publishing to TestFlight/App Store is
+      # an irreversible, user-facing action. Uncomment once you've verified a
+      # build artifact locally and want CI to publish automatically.
+      # app_store_connect:
+      #   api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+      #   key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+      #   issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+      #   submit_to_testflight: true
+      email:
+        recipients:
+          - r.thatcher@sky.com
+        notify:
+          success: true
+          failure: true
