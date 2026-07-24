@@ -23,14 +23,13 @@ workflows:
             -destination "generic/platform=iOS Simulator" \
             CODE_SIGNING_ALLOWED=NO
 
-  # Signed release build + optional TestFlight publish. Every credential
-  # referenced below ($APP_STORE_CONNECT_*, $CERTIFICATE_PRIVATE_KEY, etc.) is
-  # a CodeMagic encrypted environment variable/group that YOU set up in the
-  # CodeMagic UI (Teams > Environment variables, or App settings > Environment
-  # variables) — nothing here ever contains, sees, or needs an actual
-  # credential value. See:
-  # https://docs.codemagic.io/yaml-code-signing/signing-ios/ for how to
-  # generate and upload an App Store Connect API key.
+  # Signed release build + optional TestFlight publish. Signing credentials
+  # come from the "Creswick Media Limited" Apple Developer Portal integration
+  # connected in the CodeMagic UI (Team > Integrations > Developer Portal) —
+  # CodeMagic manages the App Store Connect API key and persists generated
+  # certificates/profiles itself, so no manual APP_STORE_CONNECT_* variables
+  # are needed here. See:
+  # https://docs.codemagic.io/yaml-code-signing/signing-ios/ for details.
   ios-release:
     name: iOS Release (signed, App Store Connect)
     max_build_duration: 60
@@ -39,8 +38,8 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.controly.controlymobile
-      groups:
-        - ios_release # holds APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_PRIVATE_KEY
+      integrations:
+        app_store_connect: Creswick Media Limited
       vars:
         XCODE_WORKSPACE: "iosApp/iosApp.xcodeproj"
         XCODE_SCHEME: "iosApp"
@@ -67,12 +66,10 @@ workflows:
     publishing:
       # Enabled: user confirmed intent to get a build (even the Phase 1
       # placeholder) into TestFlight now, to validate the signing/release
-      # pipeline end to end. Requires the ios_release group above to
-      # actually hold real credentials in CodeMagic's own UI.
+      # pipeline end to end. Uses the same connected Developer Portal
+      # integration for authentication — no manual API key variables.
       app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        auth: integration
         submit_to_testflight: true
       email:
         recipients:
