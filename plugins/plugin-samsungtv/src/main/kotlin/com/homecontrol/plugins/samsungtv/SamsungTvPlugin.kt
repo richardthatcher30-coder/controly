@@ -114,9 +114,16 @@ class SamsungTvPlugin(
     )
 
     override suspend fun connect(device: PairedDevice): ConnectionResult = withContext(Dispatchers.IO) {
-        if (clients.containsKey(device.ipAddress)) {
-            return@withContext ConnectionResult.Connected
-        }
+        // Always rebuild rather than trusting a cached client's mere
+        // presence in the map — a locked/backgrounded phone can silently
+        // kill the underlying socket with no local signal that it died.
+        // Unlike Android TV's ADB handshake (which had a real regression
+        // from unconditional rebuilding on real hardware), repeating this
+        // handshake against a TV that already trusts this client is
+        // documented above as safe — the TV either re-grants silently or
+        // re-prompts, which some sets already do on every connection
+        // regardless, per the class doc.
+        clients.remove(device.ipAddress)?.close()
 
         val client = SamsungLegacyClient(device.ipAddress, clientIdentity.getOrCreate())
         when (val outcome = client.connect()) {
@@ -148,8 +155,18 @@ class SamsungTvPlugin(
     override suspend fun getCapabilities(device: PairedDevice): DeviceCapabilities = capabilities()
 
     override suspend fun sendKey(device: PairedDevice, key: RemoteKey) = withContext(Dispatchers.IO) {
-        keyCodeFor(key)?.let { code -> clients[device.ipAddress]?.sendKey(code) }
-        Unit
+        val code = keyCodeFor(key) ?: return@withContext
+        val client = clients[device.ipAddress] ?: error("Not connected to ${device.name} — call connect() first")
+        try {
+            client.sendKey(code)
+        } catch (error: Exception) {
+            // The connection died mid-session — drop it so the next
+            // connect() call rebuilds instead of repeatedly hitting the
+            // same broken socket forever.
+            clients.remove(device.ipAddress, client)
+            client.close()
+            throw error
+        }
     }
 
     override suspend fun powerOn(device: PairedDevice) = sendKey(device, RemoteKey.POWER)

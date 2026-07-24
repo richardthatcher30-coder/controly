@@ -67,15 +67,14 @@ internal class SamsungLegacyClient(private val ipAddress: String, private val cl
         }
     }
 
+    /** Throws if the underlying socket has died (e.g. a locked/backgrounded phone silently killed it) — callers must not swallow this, it's what lets a dead connection get evicted and rebuilt instead of failing forever. */
     fun sendKey(keyCode: String) {
-        val socket = socket ?: return
-        runCatching {
-            DataOutputStream(socket.getOutputStream()).apply {
-                write(controlPacket(keyCode))
-                flush()
-            }
-            readResponse(socket)
+        val socket = socket ?: error("Not connected")
+        DataOutputStream(socket.getOutputStream()).apply {
+            write(controlPacket(keyCode))
+            flush()
         }
+        readResponse(socket)
     }
 
     fun close() {

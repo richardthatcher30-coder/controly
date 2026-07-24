@@ -117,6 +117,21 @@ internal class AdbConnection private constructor(
         runCatching { socket.close() }
     }
 
+    /**
+     * Cheap round-trip probe for whether this session is still usable. A
+     * locked/backgrounded phone (or the TV itself, e.g. Fire TV's more
+     * aggressive standby behavior) can silently sever the underlying socket
+     * without either side seeing a close — [Socket.isConnected] only
+     * reflects whether `connect()` was ever called, not the current state,
+     * so an actual command is the only reliable way to tell.
+     */
+    fun isAlive(): Boolean = try {
+        shell("echo")
+        true
+    } catch (error: Exception) {
+        false
+    }
+
     private fun writeMessage(command: Int, arg0: Int, arg1: Int, data: ByteArray = ByteArray(0)) {
         val header = ByteBuffer.allocate(24).order(ByteOrder.LITTLE_ENDIAN)
         header.putInt(command)

@@ -124,10 +124,21 @@ class AndroidTvPlugin(
         // already-authenticated connection open for this device — reuse it
         // rather than tearing it down and immediately reopening a new one.
         // On at least one real TV, that immediate close-then-reopen churn is
-        // itself what triggered a fast, unexplained connection failure.
-        if (connections[device.ipAddress] != null) {
-            android.util.Log.d("AndroidTvPlugin", "connect: reusing existing connection")
-            return@withContext ConnectionResult.Connected
+        // itself what triggered a fast, unexplained connection failure. But
+        // trusting mere presence in the map isn't enough: the phone locking,
+        // the app backgrounding, or the TV itself (Fire TV especially) can
+        // silently kill the underlying socket, and this app-side map has no
+        // way to notice that on its own — so verify it still actually works
+        // before reusing it, and only rebuild if that probe fails.
+        val cached = connections[device.ipAddress]
+        if (cached != null) {
+            if (cached.isAlive()) {
+                android.util.Log.d("AndroidTvPlugin", "connect: reusing existing connection")
+                return@withContext ConnectionResult.Connected
+            }
+            android.util.Log.d("AndroidTvPlugin", "connect: cached connection is dead, reopening")
+            connections.remove(device.ipAddress)
+            cached.close()
         }
 
         try {
@@ -211,7 +222,16 @@ class AndroidTvPlugin(
     private suspend fun shell(device: PairedDevice, command: String): String = withContext(Dispatchers.IO) {
         val connection = connections[device.ipAddress]
             ?: error("Not connected to ${device.name} — call connect() first")
-        connection.shell(command)
+        try {
+            connection.shell(command)
+        } catch (error: Exception) {
+            // The connection died mid-session (screen lock, TV standby,
+            // ...) — drop it so the next connect() call rebuilds instead of
+            // repeatedly retrying the same broken socket forever.
+            connections.remove(device.ipAddress, connection)
+            connection.close()
+            throw error
+        }
     }
 
     private fun keyCodeFor(key: RemoteKey): String = when (key) {

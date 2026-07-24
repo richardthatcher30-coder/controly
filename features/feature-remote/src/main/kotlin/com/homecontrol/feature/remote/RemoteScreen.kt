@@ -110,8 +110,11 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import org.koin.compose.viewmodel.koinViewModel
 import com.homecontrol.core.model.AppInfo
 import com.homecontrol.core.model.DeviceCapabilities
@@ -128,6 +131,30 @@ fun RemoteScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val device = uiState.device
+
+    // The underlying connection (a raw socket, for most device types) can
+    // die silently while the screen is stopped — the phone locking, the app
+    // backgrounding, the OS reclaiming the network connection, or the
+    // device itself timing out. Nothing short-circuits button presses to
+    // notice that on its own, so re-validate/rebuild the connection every
+    // time this screen actually comes back to the foreground rather than
+    // waiting for the user to notice a dead remote and hit Retry manually.
+    // Skips the very first ON_RESUME (right after ON_CREATE) since the
+    // ViewModel's own init{} already starts the initial connection.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        var hasResumedBefore = false
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (hasResumedBefore) {
+                    viewModel.retryConnect()
+                }
+                hasResumedBefore = true
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Scaffold(
         topBar = {
