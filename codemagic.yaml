@@ -40,7 +40,7 @@ workflows:
         distribution_type: app_store
         bundle_identifier: com.controly.controlymobile
       groups:
-        - app_store_connect # holds APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_PRIVATE_KEY
+        - ios_release # holds APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_PRIVATE_KEY
       vars:
         XCODE_WORKSPACE: "iosApp/iosApp.xcodeproj"
         XCODE_SCHEME: "iosApp"
@@ -67,7 +67,7 @@ workflows:
     publishing:
       # Enabled: user confirmed intent to get a build (even the Phase 1
       # placeholder) into TestFlight now, to validate the signing/release
-      # pipeline end to end. Requires the app_store_connect group above to
+      # pipeline end to end. Requires the ios_release group above to
       # actually hold real credentials in CodeMagic's own UI.
       app_store_connect:
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
