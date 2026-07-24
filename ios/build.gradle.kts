@@ -19,6 +19,9 @@ plugins {
 kotlin {
     iosArm64()
     iosSimulatorArm64()
+    // Deliberately no iosX64() (Intel simulator) — see KmpLibraryConventionPlugin's
+    // doc comment. x86_64 is excluded from the Xcode project's simulator
+    // ARCHS instead, so it's never actually requested.
 
     targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
         binaries.framework {

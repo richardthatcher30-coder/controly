@@ -50,6 +50,13 @@ class KmpLibraryConventionPlugin : Plugin<Project> {
                 }
                 iosArm64()
                 iosSimulatorArm64()
+                // Deliberately no iosX64() (Intel simulator): confirmed via a
+                // real build that Compose Multiplatform 1.11.0's UI libraries
+                // (runtime/foundation/ui) don't publish an iosX64 variant at
+                // all anymore — Apple/JetBrains have been dropping Intel-
+                // simulator support. The Xcode project excludes x86_64 from
+                // its simulator ARCHS instead (see iosApp.xcodeproj), so this
+                // target is never actually requested.
 
                 sourceSets.commonTest.dependencies {
                     implementation(kotlin("test"))
