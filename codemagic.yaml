@@ -65,14 +65,15 @@ workflows:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
     publishing:
-      # Left commented out deliberately — publishing to TestFlight/App Store is
-      # an irreversible, user-facing action. Uncomment once you've verified a
-      # build artifact locally and want CI to publish automatically.
-      # app_store_connect:
-      #   api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-      #   key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-      #   issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-      #   submit_to_testflight: true
+      # Enabled: user confirmed intent to get a build (even the Phase 1
+      # placeholder) into TestFlight now, to validate the signing/release
+      # pipeline end to end. Requires the app_store_connect group above to
+      # actually hold real credentials in CodeMagic's own UI.
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
       email:
         recipients:
           - r.thatcher@sky.com
