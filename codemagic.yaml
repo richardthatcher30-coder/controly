@@ -37,9 +37,13 @@ workflows:
     integrations:
       app_store_connect: Creswick Media Limited
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.controly.controlymobile.ios
+      # Deliberately NOT using an `ios_signing:` block here: that triggers
+      # CodeMagic's own automatic pre-script signing step, which only
+      # fetches existing certificates/profiles rather than creating missing
+      # ones — it was failing immediately, before any of the scripts below
+      # even ran. The "Fetch signing files"/"Use signing files" scripts
+      # below (with fetch-signing-files' own --create flag) do the actual
+      # creation, using the credentials from the integration above.
       vars:
         XCODE_WORKSPACE: "iosApp/iosApp.xcodeproj"
         XCODE_SCHEME: "iosApp"
