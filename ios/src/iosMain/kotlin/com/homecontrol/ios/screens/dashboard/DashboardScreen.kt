@@ -168,5 +168,6 @@ private fun deviceTypeShortLabel(deviceType: DeviceType): String = when (deviceT
     DeviceType.SAMSUNG_TV -> "Sam"
     DeviceType.SONY_TV -> "Sony"
     DeviceType.WINDOWS_PC -> "PC"
+    DeviceType.ANDROID_COMPANION -> "Box"
     DeviceType.UNKNOWN -> "?"
 }

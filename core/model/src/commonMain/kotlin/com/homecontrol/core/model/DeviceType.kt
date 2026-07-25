@@ -12,5 +12,6 @@ enum class DeviceType {
     SAMSUNG_TV,
     SONY_TV,
     WINDOWS_PC,
+    ANDROID_COMPANION,
     UNKNOWN,
 }
