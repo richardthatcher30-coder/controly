@@ -11,6 +11,9 @@ package com.homecontrol.ios.navigation
 sealed interface Screen {
     data object Dashboard : Screen
     data object About : Screen
-    data object AddDevice : Screen
+    data object AddDeviceCategory : Screen
+    data object DeviceDiscovery : Screen
+    data object AddDeviceManually : Screen
+    data object AddCamera : Screen
     data class Remote(val deviceId: String, val deviceName: String, val ipAddress: String) : Screen
 }

@@ -11,7 +11,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.homecontrol.ios.screens.about.AboutScreen
 import com.homecontrol.ios.screens.dashboard.DashboardScreen
-import com.homecontrol.ios.screens.devices.AddDeviceScreen
+import com.homecontrol.ios.screens.devices.AddCameraScreen
+import com.homecontrol.ios.screens.devices.AddDeviceCategoryScreen
+import com.homecontrol.ios.screens.devices.AddDeviceManuallyScreen
+import com.homecontrol.ios.screens.devices.DeviceDiscoveryScreen
 import com.homecontrol.ios.screens.remote.RemoteScreen
 import com.homecontrol.ios.theme.ControlyTheme
 
@@ -29,18 +32,39 @@ fun ControlyApp() {
         if (backStack.size > 1) backStack = backStack.dropLast(1)
     }
 
+    // Pairing can succeed from either DeviceDiscovery or (one level deeper)
+    // AddDeviceManually -- either way, land back on the Dashboard rather
+    // than leaving stale discovery/category screens on the back stack.
+    fun popToDashboard() {
+        backStack = listOf(Screen.Dashboard)
+    }
+
     ControlyTheme(darkTheme = true) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             when (val screen = currentScreen) {
                 Screen.Dashboard -> DashboardScreen(
-                    onAddDevice = { push(Screen.AddDevice) },
+                    onAddDevice = { push(Screen.AddDeviceCategory) },
                     onAbout = { push(Screen.About) },
                     onDeviceClick = { device ->
                         push(Screen.Remote(device.id, device.name, device.ipAddress))
                     },
                 )
                 Screen.About -> AboutScreen(onBack = { pop() })
-                Screen.AddDevice -> AddDeviceScreen(onBack = { pop() }, onPaired = { pop() })
+                Screen.AddDeviceCategory -> AddDeviceCategoryScreen(
+                    onBack = { pop() },
+                    onDevicesClick = { push(Screen.DeviceDiscovery) },
+                    onCamerasClick = { push(Screen.AddCamera) },
+                )
+                Screen.DeviceDiscovery -> DeviceDiscoveryScreen(
+                    onBack = { pop() },
+                    onAddManually = { push(Screen.AddDeviceManually) },
+                    onPaired = { popToDashboard() },
+                )
+                Screen.AddDeviceManually -> AddDeviceManuallyScreen(
+                    onBack = { pop() },
+                    onPaired = { popToDashboard() },
+                )
+                Screen.AddCamera -> AddCameraScreen(onBack = { pop() })
                 is Screen.Remote -> RemoteScreen(
                     deviceName = screen.deviceName,
                     ipAddress = screen.ipAddress,

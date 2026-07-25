@@ -100,5 +100,7 @@ fun AboutScreen(onBack: () -> Unit) {
 
 private fun openUrl(urlString: String) {
     val url = NSURL.URLWithString(urlString) ?: return
-    UIApplication.sharedApplication.openURL(url)
+    // The plain openURL(url) selector is deprecated since iOS 10 in favor of this
+    // one -- using the current API rather than the deprecated single-arg form.
+    UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any?>(), completionHandler = null)
 }
