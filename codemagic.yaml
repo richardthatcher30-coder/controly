@@ -136,12 +136,17 @@ workflows:
           # already used by any prior build of this app, and Info.plist
           # hardcodes a literal build number -- so without this, every
           # successful build after the first would fail at the publish step.
-          # Look up the actual latest TestFlight build number and go one
-          # higher, instead of relying on whatever's committed in Info.plist.
-          BUNDLE_ID=$(xcode-project detect-bundle-id)
-          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" 2>/dev/null || echo 0)
-          NEW_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
-          echo "Setting CFBundleVersion to $NEW_BUILD_NUMBER (latest TestFlight build was $LATEST_BUILD_NUMBER)"
+          # Tried looking up the actual latest TestFlight build number via
+          # `app-store-connect get-latest-testflight-build-number` and going
+          # one higher, but it silently printed nothing (not an error, so
+          # the `|| echo 0` fallback never triggered either -- bash
+          # arithmetic just treated the empty string as 0), producing "1"
+          # on every single build regardless of what was already uploaded.
+          # A Unix timestamp sidesteps the whole problem: no external
+          # lookup, no CLI tool to get subtly wrong, and by definition
+          # always higher than any previous build's.
+          NEW_BUILD_NUMBER=$(date +%s)
+          echo "Setting CFBundleVersion to $NEW_BUILD_NUMBER (Unix timestamp)"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD_NUMBER" iosApp/iosApp/Info.plist
 
           xcodebuild archive \
