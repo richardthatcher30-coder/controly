@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using HomeControl.Companion.AppButtons;
 using HomeControl.Companion.Diagnostics;
@@ -25,6 +26,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly NotifyIcon _trayIcon;
     private readonly PairingManager _pairingManager;
     private readonly CompanionServer _server;
+    private ToolStripMenuItem? _firewallMenuItem;
     private bool _wasConnected;
 
     public TrayApplicationContext()
@@ -49,6 +51,58 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _trayIcon.MouseClick += OnTrayIconMouseClick;
 
         _server.Start();
+        AttemptFirstRunFirewallSetupIfNeeded();
+    }
+
+    // Discovery replies never reach the phone if Windows Firewall hasn't
+    // explicitly allowed this exe — silently, with nothing for the user to
+    // notice or diagnose. Try once automatically per install; if the user
+    // declines the resulting UAC prompt, the "Allow network discovery"
+    // tray menu item below lets them retry deliberately later.
+    private void AttemptFirstRunFirewallSetupIfNeeded()
+    {
+        if (FirewallRuleManager.WasAutoAttempted()) return;
+
+        _ = Task.Run(() =>
+        {
+            FirewallRuleManager.MarkAutoAttempted();
+            FirewallRuleManager.TryRegister();
+            _marshalForm.BeginInvoke(RefreshFirewallMenuItem);
+        });
+    }
+
+    private void RefreshFirewallMenuItem()
+    {
+        if (_firewallMenuItem is null) return;
+        _firewallMenuItem.Checked = FirewallRuleManager.IsRuleRegistered();
+    }
+
+    private void OnFirewallMenuItemClicked(object? sender, EventArgs e)
+    {
+        var menuItem = _firewallMenuItem;
+        if (menuItem is null) return;
+        // CheckOnClick already flipped Checked to the desired new state before
+        // this handler runs; registration/removal happens off the UI thread
+        // since it launches an elevated netsh process and waits on it.
+        var wantEnabled = menuItem.Checked;
+        menuItem.Enabled = false;
+
+        _ = Task.Run(() =>
+        {
+            if (wantEnabled)
+            {
+                FirewallRuleManager.TryRegister();
+            }
+            else
+            {
+                FirewallRuleManager.Unregister();
+            }
+            _marshalForm.BeginInvoke(() =>
+            {
+                RefreshFirewallMenuItem();
+                menuItem.Enabled = true;
+            });
+        });
     }
 
     private void OnConnectionsChanged()
@@ -76,6 +130,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
         startupItem.CheckedChanged += (_, _) => StartupManager.SetEnabled(startupItem.Checked);
         menu.Items.Add(startupItem);
+
+        _firewallMenuItem = new ToolStripMenuItem("Allow network discovery (Firewall)")
+        {
+            CheckOnClick = true,
+            Checked = FirewallRuleManager.IsRuleRegistered(),
+        };
+        _firewallMenuItem.Click += OnFirewallMenuItemClicked;
+        menu.Items.Add(_firewallMenuItem);
 
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Info", null, (_, _) => ShowInfoForm());

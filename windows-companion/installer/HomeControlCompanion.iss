@@ -24,7 +24,7 @@ DisableProgramGroupPage=yes
 ; with Windows" toggle writes to the current user's Run key, not machine-wide).
 PrivilegesRequired=lowest
 OutputDir=output
-OutputBaseFilename=HomeControlCompanionSetup
+OutputBaseFilename=Controly-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
