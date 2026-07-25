@@ -61,48 +61,35 @@ workflows:
           # create.md): --certificate-key is required whenever it needs to
           # create a certificate, and it errors instead of generating one.
           # That's the actual cause of every "Cannot save/create ... without
-          # certificate private key" failure so far, not an account/cert
+          # certificate private key" failure early on, not an account/cert
           # cleanup issue. Generating our own key here and passing it in.
           #
-          # Also: fetch-signing-files has no certificate-type flag, and for
-          # an IOS_APP_STORE profile it always creates the classic "iOS
-          # Distribution" certificate type — but xcode-project build-ipa
-          # defaults CODE_SIGN_IDENTITY to the newer unified "Apple
-          # Distribution" regardless (and that default can't be overridden
-          # via --archive-xcargs; the tool re-appends its own value after
-          # any override, so the last-wins xcodebuild semantics silently
-          # discard it). So archiving failed with "No iOS Distribution
-          # signing certificate found" even though that exact certificate
-          # existed. Fix is to create the certificate CodeMagic actually
-          # expects ourselves, first, with the type it can't be told to use
-          # here — fetch-signing-files then reuses it instead of creating a
-          # mismatched one, since a DISTRIBUTION cert is valid for
-          # IOS_APP_STORE profiles too.
-          #
-          # BUT: generating a fresh key every run doesn't actually work more
-          # than once. Apple caps an account at one active Distribution
+          # Generating a fresh key every run doesn't work more than once,
+          # though: Apple caps an account at one active Distribution
           # certificate, so the next run's new random key can never match
           # the previous run's now-existing certificate, and creation starts
           # failing with "You already have a current Distribution
-          # certificate" (409) -- confirmed happening on the second run.
-          # Reuse a persisted key via CERTIFICATE_PRIVATE_KEY (from the
-          # ios_release group) once it's been bootstrapped; only the very
-          # first run (or one after the account's Distribution certs were
-          # manually revoked) generates a fresh one, saved as a build
-          # artifact specifically so it can be copied into that group and
-          # reused on every run after.
+          # certificate" (409). Reuse a persisted key via
+          # CERTIFICATE_PRIVATE_KEY (from the ios_release group) once it's
+          # been bootstrapped; only the very first run (or one after the
+          # account's Distribution certs were manually revoked) generates a
+          # fresh one, saved as a build artifact specifically so it can be
+          # copied into that group and reused on every run after.
           if [ -n "$CERTIFICATE_PRIVATE_KEY" ]; then
             echo "Using persisted CERTIFICATE_PRIVATE_KEY"
             printf '%s' "$CERTIFICATE_PRIVATE_KEY" > /tmp/certificate_key.pem
           else
             echo "No CERTIFICATE_PRIVATE_KEY set yet -- generating one (bootstrap run)"
             openssl genrsa -out /tmp/certificate_key.pem 2048
+            cp /tmp/certificate_key.pem "$CM_BUILD_DIR/certificate_key_ADD_TO_ios_release_GROUP.pem"
           fi
-          cp /tmp/certificate_key.pem "$CM_BUILD_DIR/certificate_key_ADD_TO_ios_release_GROUP.pem"
-          app-store-connect certificates create \
-            --type DISTRIBUTION \
-            --certificate-key @file:/tmp/certificate_key.pem \
-            --save
+          # No --certificate-type flag exists here (confirmed against the
+          # docs) — for an IOS_APP_STORE profile this always creates/uses
+          # the classic "iOS Distribution" certificate type, confirmed
+          # across multiple real runs (a separately-created unified
+          # "Apple Distribution" cert was never picked up for this profile
+          # type, even with a matching persisted key). See the archive step
+          # below for why that matters.
           app-store-connect fetch-signing-files "$(xcode-project detect-bundle-id)" \
             --type IOS_APP_STORE \
             --certificate-key @file:/tmp/certificate_key.pem \
@@ -112,9 +99,52 @@ workflows:
           xcode-project use-profiles
       - name: Build and archive the app
         script: |
-          xcode-project build-ipa \
-            --project "$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME"
+          # NOT using xcode-project build-ipa here — confirmed across two
+          # real runs that it unconditionally sets CODE_SIGN_IDENTITY to the
+          # newer unified "Apple Distribution" when archiving, with no way
+          # to override it: --archive-xcargs values get whitespace-split
+          # instead of shell-quoted (turning "iOS Distribution" into two
+          # broken arguments), AND the tool re-appends its own value
+          # afterward regardless of any override — xcodebuild's last-value-
+          # wins semantics silently discard it either way. But the profile
+          # from the step above is bound to a classic "iOS Distribution"
+          # certificate, not the unified one, so archiving failed with "No
+          # iOS Distribution signing certificate found" even though that
+          # exact certificate existed and use-profiles had just configured
+          # the project to use it. Calling xcodebuild directly instead,
+          # where we control every argument and nothing re-appends a
+          # conflicting default afterward.
+          mkdir -p build/ios/xcarchive build/ios/ipa
+          xcodebuild archive \
+            -project "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -archivePath build/ios/xcarchive/iosApp.xcarchive \
+            CODE_SIGN_IDENTITY="iOS Distribution" \
+            DEVELOPMENT_TEAM=PVL8GCZUC3
+
+          cat > /tmp/export_options.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>PVL8GCZUC3</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>iOS Distribution</string>
+            <key>destination</key>
+            <string>export</string>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath build/ios/xcarchive/iosApp.xcarchive \
+            -exportPath build/ios/ipa \
+            -exportOptionsPlist /tmp/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
