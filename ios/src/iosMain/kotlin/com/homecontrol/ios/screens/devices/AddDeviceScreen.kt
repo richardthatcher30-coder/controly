@@ -43,6 +43,7 @@ import com.homecontrol.core.model.PairedDevice
 import com.homecontrol.ios.adb.AdbApprovalTimeoutException
 import com.homecontrol.ios.adb.AdbConnection
 import com.homecontrol.ios.discovery.MdnsScanner
+import com.homecontrol.ios.discovery.scanForWindowsPcs
 import com.homecontrol.ios.storage.PairedDeviceStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,12 +68,16 @@ private sealed interface PairingUiState {
 }
 
 /**
- * Auto-discovery (via [MdnsScanner], Google Cast advertisement) shown above
- * a manual "Add by IP" form — mirroring Android's `DevicesScreen`, which
- * also keeps a manual fallback for devices that don't advertise themselves
- * (Fire TV included; Fire TV never shows up in the discovered list here).
- * Tapping a discovered device or submitting the manual form both funnel into
- * the same [startPairing] flow.
+ * Auto-discovery — [MdnsScanner] (Google Cast advertisement, for Android TV/
+ * Google TV) and [scanForWindowsPcs] (UDP broadcast, for Windows PCs) run in
+ * parallel — shown above a manual "Add by IP" form, mirroring Android's
+ * `DevicesScreen`, which also keeps a manual fallback for devices that don't
+ * advertise themselves (Fire TV included; it never shows up in the
+ * discovered list here on either platform). Tapping a discovered device or
+ * submitting the manual form both funnel into the same [startPairing] flow;
+ * pairing itself is currently only implemented for ADB-based device types
+ * (see [ADB_SUPPORTED_TYPES]) — a discovered Windows PC shows up in the
+ * list, but tapping it surfaces "not supported yet" rather than hanging.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,14 +90,29 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
     val scope = rememberCoroutineScope()
     val store = remember { PairedDeviceStore() }
 
+    fun addDiscovered(device: DiscoveredDevice) {
+        if (discoveredDevices.none { it.discoveryId == device.discoveryId }) {
+            discoveredDevices.add(device)
+        }
+    }
+
     DisposableEffect(Unit) {
-        val scanner = MdnsScanner()
-        scanner.startScan { device ->
-            if (discoveredDevices.none { it.discoveryId == device.discoveryId }) {
-                discoveredDevices.add(device)
+        val mdnsScanner = MdnsScanner()
+        mdnsScanner.startScan { device -> addDiscovered(device) }
+
+        // Windows PC discovery is a blocking UDP broadcast probe (unlike the
+        // event-driven mDNS callback above), so it runs on its own
+        // background coroutine rather than inline in this effect.
+        val udpJob = scope.launch(Dispatchers.Default) {
+            scanForWindowsPcs { device ->
+                scope.launch(Dispatchers.Main) { addDiscovered(device) }
             }
         }
-        onDispose { scanner.stopScan() }
+
+        onDispose {
+            mdnsScanner.stopScan()
+            udpJob.cancel()
+        }
     }
 
     fun startPairing(ip: String, deviceName: String, selectedType: DeviceType) {
@@ -285,7 +305,7 @@ private fun DiscoveredDeviceRow(device: DiscoveredDevice, onClick: () -> Unit) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = device.name, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = device.ipAddress,
+                    text = "${deviceTypeLabel(device.deviceTypeHint)} · ${device.ipAddress}",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -309,5 +329,8 @@ private fun PairingDialog(title: String, body: String, onDismiss: (() -> Unit)?)
     )
 }
 
-private fun deviceTypeLabel(deviceType: DeviceType): String =
-    MANUAL_DEVICE_TYPE_OPTIONS.firstOrNull { it.second == deviceType }?.first ?: deviceType.name
+private fun deviceTypeLabel(deviceType: DeviceType): String = when (deviceType) {
+    DeviceType.GOOGLE_TV -> "Google TV"
+    DeviceType.UNKNOWN -> "Unknown device"
+    else -> MANUAL_DEVICE_TYPE_OPTIONS.firstOrNull { it.second == deviceType }?.first ?: deviceType.name
+}
