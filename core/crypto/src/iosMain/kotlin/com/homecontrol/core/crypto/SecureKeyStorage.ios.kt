@@ -7,7 +7,6 @@ import kotlinx.cinterop.interpretObjCPointer
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
-import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFTypeRefVar
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.NSData
@@ -40,10 +39,11 @@ private const val SERVICE_NAME = "com.controly.securekeystorage"
  * this platform; every alias lives under one fixed Keychain service name
  * instead.
  *
- * UNVERIFIED AGAINST REAL HARDWARE — same caveat as `AdbSigning.ios.kt`: no
- * Mac/Xcode available in the environment that wrote this. Needs a CodeMagic
- * build + real-device run to confirm the NSMutableDictionary/CFDictionaryRef
- * bridging casts behave as expected.
+ * See `AdbSigning.ios.kt`'s doc comment — the same two real-hardware bridging
+ * bugs (kSec* constants needing `interpretObjCPointer`, and `SecItemAdd`/etc.
+ * accepting `NSDictionary` directly with no `as CFDictionaryRef` cast) were
+ * found and fixed here first, on this class, and then found again in the
+ * other file.
  */
 @OptIn(ExperimentalForeignApi::class)
 actual class SecureKeyStorage actual constructor(storageDir: String) {
@@ -57,8 +57,11 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
             setObject(bytes.toNSData(), forKey = kSecValueData.asNSString())
             setObject(kSecAttrAccessibleWhenUnlockedThisDeviceOnly.asNSString(), forKey = kSecAttrAccessible.asNSString())
         }
-        @Suppress("UNCHECKED_CAST")
-        val status = SecItemAdd(query as CFDictionaryRef, null)
+        // No cast to CFDictionaryRef here -- SecItemAdd's parameter is toll-free
+        // bridged to NSDictionary and Kotlin/Native accepts the Foundation object
+        // directly; an `as CFDictionaryRef` cast was tried first and confirmed
+        // broken at runtime on real hardware.
+        val status = SecItemAdd(query, null)
         check(status == errSecSuccess) { "Keychain SecItemAdd failed with OSStatus $status" }
     }
 
@@ -71,8 +74,7 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
             setObject(kSecMatchLimitOne.asNSString(), forKey = kSecMatchLimit.asNSString())
         }
         val result = alloc<CFTypeRefVar>()
-        @Suppress("UNCHECKED_CAST")
-        val status = SecItemCopyMatching(query as CFDictionaryRef, result.ptr)
+        val status = SecItemCopyMatching(query, result.ptr)
         if (status != errSecSuccess) return@memScoped null
         (CFBridgingRelease(result.value) as? NSData)?.toByteArray()
     }
@@ -83,8 +85,7 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
             setObject(SERVICE_NAME, forKey = kSecAttrService.asNSString())
             setObject(alias, forKey = kSecAttrAccount.asNSString())
         }
-        @Suppress("UNCHECKED_CAST")
-        SecItemDelete(query as CFDictionaryRef)
+        SecItemDelete(query)
         // Return status intentionally ignored — errSecItemNotFound is an expected, benign outcome here.
     }
 }

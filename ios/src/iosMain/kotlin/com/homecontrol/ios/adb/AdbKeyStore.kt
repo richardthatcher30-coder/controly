@@ -8,7 +8,6 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.interpretObjCPointer
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
-import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFErrorRefVar
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.NSData
@@ -58,8 +57,10 @@ class AdbKeyStore(private val secureKeyStorage: SecureKeyStorage = SecureKeyStor
             setObject(RSA_KEY_SIZE_BITS, forKey = interpretObjCPointer<NSString>(kSecAttrKeySizeInBits!!.rawValue))
         }
         val keyError = alloc<CFErrorRefVar>()
-        @Suppress("UNCHECKED_CAST")
-        val secKey = SecKeyCreateRandomKey(attributes as CFDictionaryRef, keyError.ptr)
+        // No cast to CFDictionaryRef here -- see AdbSigning.ios.kt's comment on the
+        // same pattern: the parameter is toll-free bridged to NSDictionary, and
+        // Kotlin/Native accepts the Foundation object directly.
+        val secKey = SecKeyCreateRandomKey(attributes, keyError.ptr)
             ?: error("Failed to generate ADB RSA identity key")
 
         val exportError = alloc<CFErrorRefVar>()

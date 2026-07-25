@@ -3,6 +3,7 @@ package com.homecontrol.ios.discovery
 import com.homecontrol.core.model.DeviceType
 import com.homecontrol.core.model.DiscoveredDevice
 import com.homecontrol.core.model.DiscoveryProtocol
+import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.UIntVar
@@ -10,6 +11,7 @@ import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.sizeOf
@@ -19,12 +21,17 @@ import kotlinx.cinterop.value
 import platform.posix.AF_INET
 import platform.posix.EAGAIN
 import platform.posix.EWOULDBLOCK
+import platform.posix.IFF_BROADCAST
+import platform.posix.IFF_UP
 import platform.posix.SOCK_DGRAM
 import platform.posix.SOL_SOCKET
 import platform.posix.SO_BROADCAST
 import platform.posix.SO_RCVTIMEO
 import platform.posix.close
 import platform.posix.errno
+import platform.posix.freeifaddrs
+import platform.posix.getifaddrs
+import platform.posix.ifaddrs
 import platform.posix.recvfrom
 import platform.posix.sendto
 import platform.posix.setsockopt
@@ -57,17 +64,22 @@ sealed interface UdpScanResult {
  * `platform.posix`, matching `TcpSocket.ios.kt`'s own approach.
  *
  * Wire protocol (from `NetworkDeviceDiscoveryScanner.kt`): broadcast
- * "HOMECONTROL_DISCOVER" to 255.255.255.255:58600, listen for
- * "HOMECONTROL_HERE <name with spaces> <mac>" replies for a few seconds —
- * the MAC is always the last space-separated token (never contains a
- * space), so it anchors the split rather than assuming the name is one word.
+ * "HOMECONTROL_DISCOVER" to port 58600, listen for "HOMECONTROL_HERE <name
+ * with spaces> <mac>" replies for a few seconds — the MAC is always the last
+ * space-separated token (never contains a space), so it anchors the split
+ * rather than assuming the name is one word.
  *
  * Every syscall's return value is checked and reported via [UdpScanResult] —
  * a first real-device attempt found nothing with no error either, which
  * turned out to be because nothing was actually being checked (any silent
  * failure at socket/setsockopt/sendto would look identical to "no devices
- * on the network"). This makes the next failure, if any, tell us exactly
- * which step broke instead of requiring another guess.
+ * on the network"). That surfaced a real bug: sending to the global
+ * broadcast address 255.255.255.255 (what Android's own implementation
+ * uses, and what this file originally did too) fails on iOS with
+ * `EHOSTUNREACH` ("No route to host") — a well-known iOS/BSD quirk absent
+ * on Android. The fix is to enumerate network interfaces via `getifaddrs`
+ * and send to the active Wi-Fi interface's own subnet-directed broadcast
+ * address (e.g. 192.168.1.255) instead, which iOS does route correctly.
  *
  * Blocking — call off the main thread. Pairing with a device found this way
  * isn't implemented on iOS yet (only ADB-based Android TV/Fire TV/Google TV
@@ -94,10 +106,14 @@ fun scanForWindowsPcs(onDeviceFound: (DiscoveredDevice) -> Unit): UdpScanResult 
                 return errnoFailure("setsockopt(SO_RCVTIMEO)")
             }
 
+            // 255.255.255.255 fails with EHOSTUNREACH on iOS (confirmed on real hardware) --
+            // use the Wi-Fi interface's actual subnet broadcast address instead, falling back
+            // to the global address only if interface enumeration itself didn't find one.
+            val broadcastAddress = findBroadcastAddress() ?: 0xFFFFFFFFu
             val destAddr = alloc<sockaddr_in>().apply {
                 sin_family = AF_INET.convert()
                 sin_port = hostToNetworkShort(UDP_BROADCAST_PORT)
-                sin_addr.s_addr = 0xFFFFFFFFu // 255.255.255.255 -- all-ones is the same in either byte order
+                sin_addr.s_addr = broadcastAddress
             }
             val message = UDP_DISCOVER_MESSAGE.encodeToByteArray()
             val sent = message.usePinned { pinned ->
@@ -155,6 +171,38 @@ fun scanForWindowsPcs(onDeviceFound: (DiscoveredDevice) -> Unit): UdpScanResult 
         }
     } finally {
         close(fd)
+    }
+}
+
+/**
+ * Finds the first up, broadcast-capable IPv4 interface's subnet broadcast
+ * address (e.g. 192.168.1.255 for a typical home network on Wi-Fi/`en0`),
+ * via `getifaddrs`. Returns null (falling back to the global broadcast
+ * address) if enumeration fails or no such interface is found — loopback
+ * interfaces are point-to-point and don't set `IFF_BROADCAST`, so no
+ * explicit exclusion is needed for those.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun findBroadcastAddress(): UInt? = memScoped {
+    val ifapVar = alloc<CPointerVar<ifaddrs>>()
+    if (getifaddrs(ifapVar.ptr) != 0) return@memScoped null
+    try {
+        var current = ifapVar.value
+        while (current != null) {
+            val ifa = current.pointed
+            val flags = ifa.ifa_flags.toInt()
+            val addr = ifa.ifa_addr
+            val broadAddr = ifa.ifa_broadaddr
+            if ((flags and IFF_UP) != 0 && (flags and IFF_BROADCAST) != 0 && addr != null && broadAddr != null) {
+                if (addr.pointed.sa_family.toInt() == AF_INET) {
+                    return@memScoped broadAddr.reinterpret<sockaddr_in>().pointed.sin_addr.s_addr
+                }
+            }
+            current = ifa.ifa_next
+        }
+        null
+    } finally {
+        freeifaddrs(ifapVar.value)
     }
 }
 

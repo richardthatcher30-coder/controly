@@ -8,8 +8,6 @@ import kotlinx.cinterop.interpretObjCPointer
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.usePinned
-import platform.CoreFoundation.CFDataRef
-import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFErrorRefVar
 import platform.CoreFoundation.CFRelease
 import platform.Foundation.CFBridgingRelease
@@ -40,11 +38,14 @@ import platform.posix.memcpy
  * actual — required because the ADB auth token itself is what gets signed,
  * not a hash of it.
  *
- * UNVERIFIED AGAINST REAL HARDWARE: this compiles for iosArm64/iosSimulatorArm64
- * but has not been run against a real ADB handshake — no Mac/Xcode is
- * available in the environment that wrote it. Needs a CodeMagic build +
- * on-device pairing attempt against a real Android TV/Fire TV to confirm the
- * NSData/CFDataRef bridging casts and DER unwrapping are correct end to end.
+ * Two real-hardware bugs already found and fixed here: kSec* constants need
+ * `interpretObjCPointer`, not `as NSString` (compiles, throws at runtime);
+ * and `SecKeyCreateWithData`/`SecKeyCreateSignature`'s CFDataRef/CFDictionaryRef
+ * parameters take the NSData/NSDictionary objects directly with no cast at
+ * all (an `as CFDataRef`/`as CFDictionaryRef` cast also compiles, also
+ * throws at runtime). Still unverified: whether the actual RSA signature
+ * produced is byte-for-byte correct — that only shows up as the TV either
+ * accepting or rejecting the pairing key, not as a crash.
  */
 @OptIn(ExperimentalForeignApi::class)
 actual fun signAdbAuthToken(token: ByteArray, privateKeyPkcs8: ByteArray): ByteArray {
@@ -68,18 +69,21 @@ actual fun signAdbAuthToken(token: ByteArray, privateKeyPkcs8: ByteArray): ByteA
         }
 
         val keyError = alloc<CFErrorRefVar>()
-        @Suppress("UNCHECKED_CAST")
-        val secKey = SecKeyCreateWithData(keyData as CFDataRef, attributes as CFDictionaryRef, keyError.ptr)
+        // SecKeyCreateWithData's CFDataRef/CFDictionaryRef parameters are toll-free
+        // bridged to NSData/NSDictionary in the underlying header, and Kotlin/Native's
+        // cinterop accepts the Foundation objects directly here -- no cast needed (an
+        // `as CFDataRef`/`as CFDictionaryRef` cast was tried first and confirmed broken
+        // at runtime on real hardware: "NSDictionaryAsKMap cannot be cast to CPointer").
+        val secKey = SecKeyCreateWithData(keyData, attributes, keyError.ptr)
             ?: error("Failed to import ADB RSA private key into Security framework")
 
         try {
             val tokenData = token.toNSData()
             val sigError = alloc<CFErrorRefVar>()
-            @Suppress("UNCHECKED_CAST")
             val signature = SecKeyCreateSignature(
                 secKey,
                 kSecKeyAlgorithmRSASignatureDigestPKCS1v15Raw,
-                tokenData as CFDataRef,
+                tokenData,
                 sigError.ptr,
             ) ?: error("Failed to sign ADB auth token")
 
