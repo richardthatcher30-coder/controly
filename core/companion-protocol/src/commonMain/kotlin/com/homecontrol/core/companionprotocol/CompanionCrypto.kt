@@ -1,12 +1,11 @@
 package com.homecontrol.core.companionprotocol
 
-import dev.whyoleg.cryptography.CryptographyProvider
 import dev.whyoleg.cryptography.algorithms.EC
 import dev.whyoleg.cryptography.algorithms.ECDH
 import dev.whyoleg.cryptography.algorithms.HMAC
 import dev.whyoleg.cryptography.algorithms.SHA256
 
-private val provider = CryptographyProvider.Default
+private val provider get() = companionCryptographyProvider
 private val ecdh get() = provider.get(ECDH)
 
 /**
@@ -56,8 +55,17 @@ object CompanionCrypto {
     }
 
     /** SHA-256 hex digest of a DER-encoded certificate -- the TOFU fingerprint format `TrustOnFirstUseTrustManager.kt` already uses on Android. */
-    suspend fun certificateFingerprintHex(certificateDer: ByteArray): String {
-        val digest = provider.get(SHA256).hasher().hash(certificateDer)
-        return digest.joinToString("") { byte -> ((byte.toInt() and 0xFF) or 0x100).toString(16).substring(1) }
-    }
+    suspend fun certificateFingerprintHex(certificateDer: ByteArray): String =
+        hexDigest(provider.get(SHA256).hasher().hash(certificateDer))
+
+    /**
+     * Same as [certificateFingerprintHex], blocking -- for callback contexts
+     * that aren't suspend functions, e.g. iOS's `NSURLSessionDelegate`
+     * challenge handler, which TOFU pinning has to run inside.
+     */
+    fun certificateFingerprintHexBlocking(certificateDer: ByteArray): String =
+        hexDigest(provider.get(SHA256).hasher().hashBlocking(certificateDer))
+
+    private fun hexDigest(bytes: ByteArray): String =
+        bytes.joinToString("") { byte -> ((byte.toInt() and 0xFF) or 0x100).toString(16).substring(1) }
 }
