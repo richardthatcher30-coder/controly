@@ -1,0 +1,15 @@
+package com.homecontrol.ios.navigation
+
+/**
+ * Hand-rolled screen enum + back-stack instead of a navigation library.
+ * `androidx.navigation:navigation-compose` (used on Android) has uncertain
+ * iOS/KMP target support to verify without a Mac to compile against, and
+ * this app's flows are simple enough (a handful of linear pushes) that a
+ * plain `List<Screen>` back-stack in Compose state is enough — see
+ * [ControlyApp].
+ */
+sealed interface Screen {
+    data object Dashboard : Screen
+    data object About : Screen
+    data object AddDevice : Screen
+}

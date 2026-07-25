@@ -11,10 +11,17 @@ plugins {
  * genuine multiplatform module; this module's only job is producing one
  * `.framework`/`.xcframework` from all of them.
  *
- * Phase 1 scaffold only: depends on nothing but Compose Multiplatform itself
- * and shows a placeholder screen. `feature-*`/`plugin-registry` dependencies
- * get added once those modules are themselves converted to KMP (later
- * phases) — adding them now would just fail to compile.
+ * Depends on the four modules that are genuinely KMP today (`core:model`,
+ * `core:net-io`, `core:crypto`) for shared data types, sockets, and ADB
+ * signing/Keychain storage. Everything UI-facing (`core:designsystem`,
+ * `core:data`/`core:database`/`core:discovery`, the device plugins, and all
+ * `feature-*` modules) is still Android-only, so this module's own Dashboard/
+ * About/Devices/Pairing screens and its ADB pairing implementation are
+ * iOS-native code, not shared with Android yet — see the "fast iOS-native
+ * path" decision in the Dashboard/Devices build task. `feature-*`/
+ * `plugin-registry` dependencies get added once those modules are themselves
+ * converted to KMP (a later, separate effort) and this module's screens can
+ * be unified with Android's.
  */
 kotlin {
     iosArm64()
@@ -35,5 +42,9 @@ kotlin {
         implementation(compose.foundation)
         implementation(compose.material3)
         implementation(compose.ui)
+        implementation(project(":core:model"))
+        implementation(project(":core:net-io"))
+        implementation(project(":core:crypto"))
+        implementation(libs.kotlinx.coroutines.core)
     }
 }
