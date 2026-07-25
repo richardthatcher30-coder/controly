@@ -51,13 +51,20 @@ workflows:
       - name: Build Kotlin/Native framework (release, device)
         script: |
           ./gradlew :ios:linkReleaseFrameworkIosArm64
-      - name: Create signing certificate
-        script: |
-          app-store-connect certificates create --type IOS_DISTRIBUTION --save
       - name: Fetch signing files
         script: |
+          # fetch-signing-files' --create does NOT generate a certificate's
+          # private key itself — confirmed against CodeMagic's own CLI docs
+          # (docs/app-store-connect/fetch-signing-files.md, certificates/
+          # create.md): --certificate-key is required whenever it needs to
+          # create a certificate, and it errors instead of generating one.
+          # That's the actual cause of every "Cannot save/create ... without
+          # certificate private key" failure so far, not an account/cert
+          # cleanup issue. Generating our own key here and passing it in.
+          openssl genrsa -out /tmp/certificate_key.pem 2048
           app-store-connect fetch-signing-files "$(xcode-project detect-bundle-id)" \
             --type IOS_APP_STORE \
+            --certificate-key @file:/tmp/certificate_key.pem \
             --create
       - name: Use signing files
         script: |
