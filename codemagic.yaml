@@ -132,6 +132,18 @@ workflows:
           fi
           echo "Using codesigning identity: $CERT_IDENTITY"
 
+          # App Store Connect rejects an upload whose CFBundleVersion was
+          # already used by any prior build of this app, and Info.plist
+          # hardcodes a literal build number -- so without this, every
+          # successful build after the first would fail at the publish step.
+          # Look up the actual latest TestFlight build number and go one
+          # higher, instead of relying on whatever's committed in Info.plist.
+          BUNDLE_ID=$(xcode-project detect-bundle-id)
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" 2>/dev/null || echo 0)
+          NEW_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
+          echo "Setting CFBundleVersion to $NEW_BUILD_NUMBER (latest TestFlight build was $LATEST_BUILD_NUMBER)"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD_NUMBER" iosApp/iosApp/Info.plist
+
           xcodebuild archive \
             -project "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
