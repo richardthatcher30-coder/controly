@@ -1,6 +1,9 @@
 package com.homecontrol.core.discovery
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
@@ -14,6 +17,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.MulticastSocket
 
@@ -172,7 +176,18 @@ class NetworkDeviceDiscoveryScanner(
                 socket.broadcast = true
                 socket.soTimeout = SCAN_DURATION_MS.toInt()
 
-                val broadcastAddress = InetAddress.getByName("255.255.255.255")
+                // A send() to the global broadcast address fails with
+                // ENETUNREACH/"No route to host" on real devices (confirmed,
+                // not just an emulator quirk) whenever the phone has more
+                // than one active network — e.g. Wi-Fi + mobile data both
+                // on, which is the Android default — because the OS can't
+                // tell which interface a broadcast should go out on and
+                // picks one with no route to it. Binding the socket to the
+                // Wi-Fi network specifically removes that ambiguity.
+                val wifiNetwork = activeWifiNetwork()
+                wifiNetwork?.let { runCatching { it.bindSocket(socket) } }
+
+                val broadcastAddress = wifiNetwork?.let { wifiBroadcastAddress(it) } ?: InetAddress.getByName("255.255.255.255")
                 socket.send(DatagramPacket(message, message.size, broadcastAddress, UDP_BROADCAST_PORT))
 
                 val buffer = ByteArray(1024)
@@ -202,5 +217,31 @@ class NetworkDeviceDiscoveryScanner(
                 }
             }
         }
+    }
+
+    private fun activeWifiNetwork(): Network? {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        return connectivityManager.allNetworks.firstOrNull { network ->
+            val capabilities = connectivityManager.getNetworkCapabilities(network)
+            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
+    }
+
+    /** The Wi-Fi subnet's directed broadcast address (e.g. 192.168.1.255) computed from its actual IP + prefix length, rather than the global 255.255.255.255 — more reliable, and what the socket-binding fix above is really for. */
+    private fun wifiBroadcastAddress(network: Network): InetAddress? {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val linkAddress = connectivityManager.getLinkProperties(network)
+            ?.linkAddresses
+            ?.firstOrNull { it.address is Inet4Address }
+            ?: return null
+
+        val addressBytes = linkAddress.address.address
+        val prefixLength = linkAddress.prefixLength
+        val broadcastBytes = ByteArray(4) { i ->
+            val maskBits = (prefixLength - i * 8).coerceIn(0, 8)
+            val maskByte = (0xFF shl (8 - maskBits)) and 0xFF
+            (addressBytes[i].toInt() or maskByte.inv()).toByte()
+        }
+        return InetAddress.getByAddress(broadcastBytes)
     }
 }

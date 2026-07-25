@@ -7,6 +7,12 @@
          and UPnP router port-forwarding — without it, some devices silently
          drop incoming multicast UDP packets (SSDP responses). -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- Needed for ConnectivityManager.getNetworkCapabilities()/getLinkProperties(),
+         used to bind the Windows PC discovery broadcast socket to the Wi-Fi
+         network specifically — without it, a phone with mobile data also
+         active can route the broadcast through the wrong interface and fail
+         with "No route to host". -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:name=".HomeControlApplication"
