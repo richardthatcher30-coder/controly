@@ -159,7 +159,7 @@ class CompanionConnection(
                         completionHandler(NSURLSessionAuthChallengeCancelAuthenticationChallenge, null)
                         return@handleChallenge
                     }
-                    val trust = challenge.protectionSpace.serverTrust()
+                    val trust = challenge.protectionSpace.serverTrust
                     val certificate = trust?.let { SecTrustGetCertificateAtIndex(it, 0) }
                     val certificateData = certificate?.let { SecCertificateCopyData(it) }
                     val certificateDer = certificateData?.let { (CFBridgingRelease(it) as NSData).toByteArray() }
