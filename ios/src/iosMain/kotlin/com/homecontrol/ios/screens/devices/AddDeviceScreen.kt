@@ -43,6 +43,7 @@ import com.homecontrol.core.model.PairedDevice
 import com.homecontrol.ios.adb.AdbApprovalTimeoutException
 import com.homecontrol.ios.adb.AdbConnection
 import com.homecontrol.ios.discovery.MdnsScanner
+import com.homecontrol.ios.discovery.UdpScanResult
 import com.homecontrol.ios.discovery.scanForWindowsPcs
 import com.homecontrol.ios.storage.PairedDeviceStore
 import kotlinx.coroutines.Dispatchers
@@ -87,6 +88,7 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
     var deviceType by remember { mutableStateOf(DeviceType.ANDROID_TV) }
     var pairingState by remember { mutableStateOf<PairingUiState>(PairingUiState.Idle) }
     val discoveredDevices = remember { mutableStateListOf<DiscoveredDevice>() }
+    var windowsScanResult by remember { mutableStateOf<UdpScanResult?>(null) }
     val scope = rememberCoroutineScope()
     val store = remember { PairedDeviceStore() }
 
@@ -104,9 +106,10 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
         // event-driven mDNS callback above), so it runs on its own
         // background coroutine rather than inline in this effect.
         val udpJob = scope.launch(Dispatchers.Default) {
-            scanForWindowsPcs { device ->
+            val result = scanForWindowsPcs { device ->
                 scope.launch(Dispatchers.Main) { addDiscovered(device) }
             }
+            withContext(Dispatchers.Main) { windowsScanResult = result }
         }
 
         onDispose {
@@ -199,6 +202,16 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
+            }
+
+            (windowsScanResult as? UdpScanResult.Failed)?.let { failure ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Windows PC scan couldn't run: ${failure.step} failed " +
+                        "(errno ${failure.errnoValue}: ${failure.errnoMessage})",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))

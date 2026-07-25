@@ -13,26 +13,37 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.sizeOf
+import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import platform.posix.AF_INET
+import platform.posix.EAGAIN
+import platform.posix.EWOULDBLOCK
 import platform.posix.SOCK_DGRAM
 import platform.posix.SOL_SOCKET
 import platform.posix.SO_BROADCAST
 import platform.posix.SO_RCVTIMEO
 import platform.posix.close
+import platform.posix.errno
 import platform.posix.recvfrom
 import platform.posix.sendto
 import platform.posix.setsockopt
 import platform.posix.sockaddr
 import platform.posix.sockaddr_in
 import platform.posix.socket
+import platform.posix.strerror
 import platform.posix.timeval
 
 private const val UDP_BROADCAST_PORT = 58600
 private const val UDP_DISCOVER_MESSAGE = "HOMECONTROL_DISCOVER"
 private const val UDP_RESPONSE_PREFIX = "HOMECONTROL_HERE"
 private const val SCAN_TIMEOUT_SECONDS = 5L
+
+/** Result of a [scanForWindowsPcs] run — surfaced in the UI so a real-device failure is diagnosable instead of silent. */
+sealed interface UdpScanResult {
+    data class Completed(val devicesFound: Int) : UdpScanResult
+    data class Failed(val step: String, val errnoValue: Int, val errnoMessage: String) : UdpScanResult
+}
 
 /**
  * Re-implementation of `core:discovery`'s UDP-broadcast half of Windows PC
@@ -51,29 +62,37 @@ private const val SCAN_TIMEOUT_SECONDS = 5L
  * the MAC is always the last space-separated token (never contains a
  * space), so it anchors the split rather than assuming the name is one word.
  *
+ * Every syscall's return value is checked and reported via [UdpScanResult] —
+ * a first real-device attempt found nothing with no error either, which
+ * turned out to be because nothing was actually being checked (any silent
+ * failure at socket/setsockopt/sendto would look identical to "no devices
+ * on the network"). This makes the next failure, if any, tell us exactly
+ * which step broke instead of requiring another guess.
+ *
  * Blocking — call off the main thread. Pairing with a device found this way
  * isn't implemented on iOS yet (only ADB-based Android TV/Fire TV/Google TV
  * is); this surfaces Windows PCs in the Add Device list so discovery isn't
  * silently incomplete, same as the "coming soon" treatment already shown
  * for other unsupported types.
- *
- * UNVERIFIED AGAINST REAL HARDWARE — same caveat as the rest of this iOS
- * networking code.
  */
 @OptIn(ExperimentalForeignApi::class)
-fun scanForWindowsPcs(onDeviceFound: (DiscoveredDevice) -> Unit) {
+fun scanForWindowsPcs(onDeviceFound: (DiscoveredDevice) -> Unit): UdpScanResult {
     val fd = socket(AF_INET, SOCK_DGRAM, 0)
-    if (fd < 0) return
+    if (fd < 0) return errnoFailure("socket")
     try {
         memScoped {
             val broadcastEnabled = alloc<IntVar>().apply { value = 1 }
-            setsockopt(fd, SOL_SOCKET, SO_BROADCAST, broadcastEnabled.ptr, sizeOf<IntVar>().convert())
+            if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, broadcastEnabled.ptr, sizeOf<IntVar>().convert()) != 0) {
+                return errnoFailure("setsockopt(SO_BROADCAST)")
+            }
 
             val timeout = alloc<timeval>().apply {
                 tv_sec = SCAN_TIMEOUT_SECONDS
                 tv_usec = 0
             }
-            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, timeout.ptr, sizeOf<timeval>().convert())
+            if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, timeout.ptr, sizeOf<timeval>().convert()) != 0) {
+                return errnoFailure("setsockopt(SO_RCVTIMEO)")
+            }
 
             val destAddr = alloc<sockaddr_in>().apply {
                 sin_family = AF_INET.convert()
@@ -81,7 +100,7 @@ fun scanForWindowsPcs(onDeviceFound: (DiscoveredDevice) -> Unit) {
                 sin_addr.s_addr = 0xFFFFFFFFu // 255.255.255.255 -- all-ones is the same in either byte order
             }
             val message = UDP_DISCOVER_MESSAGE.encodeToByteArray()
-            message.usePinned { pinned ->
+            val sent = message.usePinned { pinned ->
                 sendto(
                     fd,
                     pinned.addressOf(0),
@@ -91,10 +110,12 @@ fun scanForWindowsPcs(onDeviceFound: (DiscoveredDevice) -> Unit) {
                     sizeOf<sockaddr_in>().convert(),
                 )
             }
+            if (sent < 0) return errnoFailure("sendto")
 
             val buffer = ByteArray(1024)
             val fromAddr = alloc<sockaddr_in>()
             val fromLen = alloc<UIntVar>().apply { value = sizeOf<sockaddr_in>().convert() }
+            var devicesFound = 0
             while (true) {
                 val received = buffer.usePinned { pinned ->
                     recvfrom(
@@ -106,13 +127,19 @@ fun scanForWindowsPcs(onDeviceFound: (DiscoveredDevice) -> Unit) {
                         fromLen.ptr,
                     )
                 }
-                if (received <= 0) break // timeout or error ends the scan
+                if (received < 0) {
+                    val err = errno
+                    if (err == EAGAIN || err == EWOULDBLOCK) break // normal timeout -- scan window closed
+                    return errnoFailure("recvfrom", err)
+                }
+                if (received == 0L) break
                 val text = buffer.decodeToString(0, received.toInt())
                 if (!text.startsWith(UDP_RESPONSE_PREFIX)) continue
                 val ipAddress = formatIPv4(fromAddr.sin_addr.s_addr)
                 val tokens = text.removePrefix(UDP_RESPONSE_PREFIX).trim().split(" ")
                 val macAddress = tokens.lastOrNull()?.takeIf { it.isNotEmpty() }
                 val name = tokens.dropLast(1).joinToString(" ").ifEmpty { ipAddress }
+                devicesFound++
                 onDeviceFound(
                     DiscoveredDevice(
                         discoveryId = "udp:$ipAddress",
@@ -124,11 +151,16 @@ fun scanForWindowsPcs(onDeviceFound: (DiscoveredDevice) -> Unit) {
                     ),
                 )
             }
+            return UdpScanResult.Completed(devicesFound)
         }
     } finally {
         close(fd)
     }
 }
+
+@OptIn(ExperimentalForeignApi::class)
+private fun errnoFailure(step: String, errnoValue: Int = errno): UdpScanResult.Failed =
+    UdpScanResult.Failed(step, errnoValue, strerror(errnoValue)?.toKString() ?: "unknown error")
 
 private fun hostToNetworkShort(value: Int): UShort {
     return (((value and 0xFF) shl 8) or ((value shr 8) and 0xFF)).toUShort()
