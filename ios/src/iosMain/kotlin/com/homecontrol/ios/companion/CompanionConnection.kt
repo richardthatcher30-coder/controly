@@ -18,6 +18,7 @@ import io.ktor.websocket.readText
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.UnsafeNumber
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -54,7 +55,7 @@ class CompanionHandshakeException(message: String) : Exception(message)
  * `Dispatchers.Default`), even though the underlying transport is
  * inherently async (Ktor/coroutines) unlike ADB's raw blocking sockets.
  */
-@OptIn(ExperimentalEncodingApi::class, ExperimentalForeignApi::class)
+@OptIn(ExperimentalEncodingApi::class, ExperimentalForeignApi::class, UnsafeNumber::class)
 class CompanionConnection(
     private val keyStore: CompanionKeyStore = CompanionKeyStore(),
     private val deviceStore: CompanionDeviceStore = CompanionDeviceStore(),
@@ -78,10 +79,11 @@ class CompanionConnection(
             send(WireMessage(type = WireMessageType.PAIR_REQUEST, clientPublicKey = keyStore.publicKeyBase64(), deviceName = DEVICE_NAME))
 
             val challenge = receive() ?: throw CompanionHandshakeException("No response to pairing request")
-            if (challenge.type != WireMessageType.PAIR_CHALLENGE || challenge.serverPublicKey == null) {
+            val challengeServerPublicKey = challenge.serverPublicKey
+            if (challenge.type != WireMessageType.PAIR_CHALLENGE || challengeServerPublicKey == null) {
                 throw CompanionHandshakeException("Unexpected response: ${challenge.type}")
             }
-            serverPublicKeyBase64 = challenge.serverPublicKey
+            serverPublicKeyBase64 = challengeServerPublicKey
 
             val result = receive() ?: throw CompanionHandshakeException("No pairing result received")
             if (result.type != WireMessageType.PAIR_RESULT || result.success != true) {
@@ -91,7 +93,7 @@ class CompanionConnection(
             deviceStore.save(
                 CompanionDeviceStore.Record(
                     ipAddress = ipAddress,
-                    serverPublicKeyBase64 = challenge.serverPublicKey,
+                    serverPublicKeyBase64 = challengeServerPublicKey,
                     certificateFingerprint = observedFingerprint,
                 ),
             )
@@ -114,12 +116,13 @@ class CompanionConnection(
             send(WireMessage(type = WireMessageType.AUTH_REQUEST, clientPublicKey = keyStore.publicKeyBase64()))
 
             val challenge = receive() ?: throw CompanionHandshakeException("No response to auth request")
-            if (challenge.type != WireMessageType.AUTH_CHALLENGE || challenge.nonce == null) {
+            val challengeNonce = challenge.nonce
+            if (challenge.type != WireMessageType.AUTH_CHALLENGE || challengeNonce == null) {
                 throw CompanionHandshakeException("Unexpected response: ${challenge.type}")
             }
 
             val sharedSecret = CompanionCrypto.sharedSecret(keyStore.getOrCreatePrivateKey(), CompanionCrypto.decodePublicKey(Base64.decode(record.serverPublicKeyBase64)))
-            val proof = CompanionCrypto.reconnectProof(sharedSecret, Base64.decode(challenge.nonce))
+            val proof = CompanionCrypto.reconnectProof(sharedSecret, Base64.decode(challengeNonce))
             send(WireMessage(type = WireMessageType.AUTH_REQUEST, proofResponse = Base64.encode(proof)))
 
             val result = receive() ?: throw CompanionHandshakeException("No auth result received")
