@@ -14,6 +14,7 @@ import platform.CoreFoundation.CFRelease
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.NSData
 import platform.Foundation.NSMutableDictionary
+import platform.Foundation.NSString
 import platform.Foundation.create
 import platform.Security.SecKeyCreateSignature
 import platform.Security.SecKeyCreateWithData

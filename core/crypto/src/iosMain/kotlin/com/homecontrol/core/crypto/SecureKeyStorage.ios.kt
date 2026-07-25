@@ -93,5 +93,6 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
  * being toll-free bridged at the ObjC runtime level — an explicit unchecked
  * cast is required to use them as `NSDictionary` keys/values.
  */
+@OptIn(ExperimentalForeignApi::class)
 @Suppress("CAST_NEVER_SUCCEEDS", "UNCHECKED_CAST")
 private fun kotlinx.cinterop.CPointer<*>?.asNSString(): NSString = this as NSString

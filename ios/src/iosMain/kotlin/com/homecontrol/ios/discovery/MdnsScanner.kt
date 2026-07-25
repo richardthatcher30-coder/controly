@@ -120,6 +120,7 @@ class MdnsScanner {
     }
 }
 
+@OptIn(ExperimentalForeignApi::class)
 private class BrowserDelegate(
     private val onServiceFound: (NSNetService) -> Unit,
 ) : NSObject(), NSNetServiceBrowserDelegateProtocol {
@@ -128,6 +129,7 @@ private class BrowserDelegate(
     }
 }
 
+@OptIn(ExperimentalForeignApi::class)
 private class ServiceDelegate(
     private val onResolved: (NSNetService) -> Unit,
 ) : NSObject(), NSNetServiceDelegateProtocol {
