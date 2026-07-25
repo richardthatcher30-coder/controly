@@ -45,6 +45,14 @@ kotlin {
         implementation(project(":core:model"))
         implementation(project(":core:net-io"))
         implementation(project(":core:crypto"))
+        implementation(project(":core:companion-protocol"))
         implementation(libs.kotlinx.coroutines.core)
+        implementation(libs.kotlinx.serialization.json)
+        implementation(libs.ktor.client.core)
+        implementation(libs.ktor.client.websockets)
+    }
+
+    sourceSets.iosMain.dependencies {
+        implementation(libs.ktor.client.darwin)
     }
 }
