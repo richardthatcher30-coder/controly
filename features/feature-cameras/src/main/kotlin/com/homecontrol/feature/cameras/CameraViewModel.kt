@@ -39,7 +39,7 @@ class CameraViewModel(
         }
         _uiState.value = StreamUiState.Loading
         viewModelScope.launch {
-            val result = resolveCameraStreamUri(camera)
+            val result = resolveCameraStreamUri(camera, store)
             _uiState.value = result.fold(
                 onSuccess = { StreamUiState.Ready(it) },
                 onFailure = { StreamUiState.Failed(it.message ?: "Couldn't connect to the camera") },

@@ -35,4 +35,9 @@ class CameraStore(context: Context) {
     fun remove(id: String) {
         file.writeText(json.encodeToString(list().filterNot { it.id == id }))
     }
+
+    @Synchronized
+    fun update(camera: CameraConfig) {
+        file.writeText(json.encodeToString(list().map { if (it.id == camera.id) camera else it }))
+    }
 }

@@ -16,11 +16,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +66,7 @@ fun CamerasScreen(
     val discoveredCameras by viewModel.discoveredCameras.collectAsState()
     var showManualAddDialog by remember { mutableStateOf(false) }
     var configuringDiscovered by remember { mutableStateOf<DiscoveredCamera?>(null) }
+    var configuringRemoteAccess by remember { mutableStateOf<CameraConfig?>(null) }
 
     Scaffold(
         topBar = {
@@ -143,6 +147,13 @@ fun CamerasScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            IconButton(onClick = { configuringRemoteAccess = camera }) {
+                                Icon(
+                                    Icons.Filled.Settings,
+                                    contentDescription = "Remote access settings",
+                                    tint = if (camera.remoteHost != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                             TextButton(onClick = { viewModel.removeCamera(camera) }) { Text("Remove") }
                         }
                     }
@@ -203,6 +214,114 @@ fun CamerasScreen(
             },
         )
     }
+
+    configuringRemoteAccess?.let { camera ->
+        // Re-read the latest copy from `cameras` each recomposition so the
+        // dialog reflects a just-saved remote address instead of the stale
+        // snapshot captured when it was opened.
+        val current = cameras.firstOrNull { it.id == camera.id } ?: camera
+        RemoteAccessDialog(
+            camera = current,
+            remoteAccessState = viewModel.remoteAccessState.collectAsState().value,
+            onAutoConfigure = { viewModel.attemptUpnpAutoConfigure(current) },
+            onSaveManual = { host, port -> viewModel.setManualRemoteAddress(current, host, port) },
+            onClear = { viewModel.clearRemoteAddress(current) },
+            onDismiss = {
+                viewModel.dismissRemoteAccessResult()
+                configuringRemoteAccess = null
+            },
+        )
+    }
+}
+
+@Composable
+private fun RemoteAccessDialog(
+    camera: CameraConfig,
+    remoteAccessState: RemoteAccessUiState?,
+    onAutoConfigure: () -> Unit,
+    onSaveManual: (host: String, port: Int) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var host by remember(camera.id) { mutableStateOf(camera.remoteHost.orEmpty()) }
+    var port by remember(camera.id) { mutableStateOf((camera.remoteRtspPort ?: camera.lastKnownRtspPort ?: 554).toString()) }
+
+    // A successful UPnP attempt updates the camera's own remoteHost/Port —
+    // reflect that back into the manual fields so they don't show stale
+    // pre-attempt values underneath the result message.
+    LaunchedEffect(camera.remoteHost, camera.remoteRtspPort) {
+        camera.remoteHost?.let { host = it }
+        camera.remoteRtspPort?.let { port = it.toString() }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Remote access — ${camera.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Lets you view this camera when your phone isn't on the same Wi-Fi. This works by exposing the " +
+                        "camera's video stream to the internet through your router — anyone who finds the address and " +
+                        "port could potentially view it too, so only do this if the camera has a strong password.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                when (remoteAccessState) {
+                    RemoteAccessUiState.InProgress -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Text("  Asking your router to forward the port…", style = MaterialTheme.typography.bodySmall)
+                    }
+                    is RemoteAccessUiState.Success -> Text(
+                        "Configured: ${remoteAccessState.host}:${remoteAccessState.port}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    is RemoteAccessUiState.Failed -> Text(
+                        remoteAccessState.reason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    null -> Unit
+                }
+
+                TextButton(
+                    onClick = onAutoConfigure,
+                    enabled = remoteAccessState != RemoteAccessUiState.InProgress,
+                ) { Text("Auto-configure via UPnP (must be on the camera's Wi-Fi)") }
+
+                HorizontalDivider()
+                Text("Or enter it manually (e.g. after forwarding the port yourself):", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = host,
+                    onValueChange = { host = it },
+                    label = { Text("External host or IP") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = port,
+                    onValueChange = { port = it.filter(Char::isDigit) },
+                    label = { Text("External port") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = host.isNotBlank() && port.toIntOrNull() != null,
+                onClick = { onSaveManual(host.trim(), port.toInt()) },
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            Row {
+                if (camera.remoteHost != null) {
+                    TextButton(onClick = onClear) { Text("Clear") }
+                }
+                TextButton(onClick = onDismiss) { Text("Close") }
+            }
+        },
+    )
 }
 
 @Composable

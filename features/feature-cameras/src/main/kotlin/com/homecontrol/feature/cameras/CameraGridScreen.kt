@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -206,10 +207,11 @@ private fun CameraTile(
 @Composable
 private fun CameraFeed(camera: CameraConfig, modifier: Modifier = Modifier) {
     var state by remember(camera.id) { mutableStateOf<StreamUiState>(StreamUiState.Loading) }
+    val cameraStore = koinInject<CameraStore>()
 
     LaunchedEffect(camera.id) {
         state = StreamUiState.Loading
-        state = resolveCameraStreamUri(camera).fold(
+        state = resolveCameraStreamUri(camera, cameraStore).fold(
             onSuccess = { StreamUiState.Ready(it) },
             onFailure = { StreamUiState.Failed(it.message ?: "Couldn't connect") },
         )
