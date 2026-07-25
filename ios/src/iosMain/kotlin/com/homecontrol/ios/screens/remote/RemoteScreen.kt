@@ -110,10 +110,7 @@ fun RemoteScreen(deviceName: String, ipAddress: String, onBack: () -> Unit) {
                 connection.lastKeyOrigin?.let { origin ->
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = when (origin) {
-                            KeyOrigin.REUSED_EXISTING -> "(Used existing identity key)"
-                            KeyOrigin.FRESHLY_GENERATED -> "(Generated a FRESH identity key -- unexpected if already paired)"
-                        },
+                        text = keyOriginDiagnosticText(origin, connection.lastRetrieveMissStatus),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -126,13 +123,19 @@ fun RemoteScreen(deviceName: String, ipAddress: String, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxSize().padding(padding),
                 onKey = ::sendKey,
                 keyOrigin = connection.lastKeyOrigin,
+                retrieveMissStatus = connection.lastRetrieveMissStatus,
             )
         }
     }
 }
 
 @Composable
-private fun RemoteControls(modifier: Modifier, onKey: (RemoteKey) -> Unit, keyOrigin: KeyOrigin?) {
+private fun RemoteControls(
+    modifier: Modifier,
+    onKey: (RemoteKey) -> Unit,
+    keyOrigin: KeyOrigin?,
+    retrieveMissStatus: Long?,
+) {
     Column(
         modifier = modifier.padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -143,10 +146,7 @@ private fun RemoteControls(modifier: Modifier, onKey: (RemoteKey) -> Unit, keyOr
         // isn't actually persisting the identity key between connection attempts.
         if (keyOrigin != null) {
             Text(
-                text = when (keyOrigin) {
-                    KeyOrigin.REUSED_EXISTING -> "Connected with existing identity key"
-                    KeyOrigin.FRESHLY_GENERATED -> "Connected with a FRESH identity key (unexpected if already paired)"
-                },
+                text = keyOriginDiagnosticText(keyOrigin, retrieveMissStatus, connected = true),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -211,3 +211,21 @@ private fun androidKeycodeFor(key: RemoteKey): String = when (key) {
     RemoteKey.SMART_HUB -> "KEYCODE_TV_CONTENTS_MENU"
     RemoteKey.VOICE_ASSIST -> "KEYCODE_ASSIST"
 }
+
+/**
+ * retrieveMissStatus is the raw Keychain OSStatus from [SecureKeyStorage.lastRetrieveMissStatus]
+ * when [origin] is [KeyOrigin.FRESHLY_GENERATED] -- the actual reason the stored identity key
+ * looked missing, surfaced directly instead of guessing at the "always re-asks to pair" bug.
+ */
+private fun keyOriginDiagnosticText(origin: KeyOrigin, retrieveMissStatus: Long?, connected: Boolean = false): String =
+    when (origin) {
+        KeyOrigin.REUSED_EXISTING -> if (connected) "Connected with existing identity key" else "(Used existing identity key)"
+        KeyOrigin.FRESHLY_GENERATED -> {
+            val base = if (connected) {
+                "Connected with a FRESH identity key (unexpected if already paired)"
+            } else {
+                "(Generated a FRESH identity key -- unexpected if already paired)"
+            }
+            base + (retrieveMissStatus?.let { " [Keychain status: $it]" } ?: "")
+        }
+    }

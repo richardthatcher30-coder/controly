@@ -49,6 +49,17 @@ private const val SERVICE_NAME = "com.controly.securekeystorage"
 @OptIn(ExperimentalForeignApi::class)
 actual class SecureKeyStorage actual constructor(storageDir: String) {
 
+    /**
+     * The raw `OSStatus` from the most recent [retrieve] call that didn't find
+     * anything -- surfaced (not part of the shared `expect` contract, iOS-only)
+     * to diagnose the "TV always re-asks for approval" bug report: if [retrieve]
+     * keeps missing an item [store] just wrote in the very same run, the actual
+     * status code (e.g. errSecItemNotFound vs. an entitlement/access error) tells
+     * us why instead of requiring another guess-and-ship cycle.
+     */
+    var lastRetrieveMissStatus: Long? = null
+        private set
+
     actual fun store(alias: String, bytes: ByteArray) {
         remove(alias) // SecItemAdd fails with errSecDuplicateItem if the alias is already present
         val query = NSMutableDictionary().apply {
@@ -72,7 +83,11 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
         }
         val result = alloc<CFTypeRefVar>()
         val status = SecItemCopyMatching(query.asCFDictionaryRef(), result.ptr)
-        if (status != errSecSuccess) return@memScoped null
+        if (status != errSecSuccess) {
+            lastRetrieveMissStatus = status.toLong()
+            return@memScoped null
+        }
+        lastRetrieveMissStatus = null
         (CFBridgingRelease(result.value) as? NSData)?.toByteArray()
     }
 

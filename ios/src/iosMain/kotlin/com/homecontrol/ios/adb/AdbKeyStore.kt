@@ -50,12 +50,23 @@ class AdbKeyStore(private val secureKeyStorage: SecureKeyStorage = SecureKeyStor
     var lastKeyOrigin: KeyOrigin? = null
         private set
 
+    /**
+     * When [lastKeyOrigin] is [KeyOrigin.FRESHLY_GENERATED], the raw Keychain
+     * `OSStatus` that made [privateKeyPkcs8] think nothing was stored yet — see
+     * [SecureKeyStorage.lastRetrieveMissStatus]. Null when reused, or when a
+     * status genuinely couldn't be captured.
+     */
+    var lastRetrieveMissStatus: Long? = null
+        private set
+
     /** PKCS8-encoded RSA private key, generating and persisting a new keypair on first use. */
     fun privateKeyPkcs8(): ByteArray {
         secureKeyStorage.retrieve(KEY_ALIAS)?.let {
             lastKeyOrigin = KeyOrigin.REUSED_EXISTING
+            lastRetrieveMissStatus = null
             return it
         }
+        lastRetrieveMissStatus = secureKeyStorage.lastRetrieveMissStatus
         val generated = generateKeyPkcs8()
         secureKeyStorage.store(KEY_ALIAS, generated)
         lastKeyOrigin = KeyOrigin.FRESHLY_GENERATED

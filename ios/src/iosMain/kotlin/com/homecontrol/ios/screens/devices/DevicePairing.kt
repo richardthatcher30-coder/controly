@@ -41,7 +41,7 @@ fun deviceTypeLabel(deviceType: DeviceType): String = when (deviceType) {
 sealed interface PairingUiState {
     data object Idle : PairingUiState
     data class InProgress(val deviceName: String) : PairingUiState
-    data class Success(val deviceName: String, val keyOrigin: KeyOrigin?) : PairingUiState
+    data class Success(val deviceName: String, val keyOrigin: KeyOrigin?, val retrieveMissStatus: Long?) : PairingUiState
     data class Failed(val deviceName: String, val reason: String) : PairingUiState
 }
 
@@ -92,7 +92,7 @@ class PairingController internal constructor(
                     ),
                 )
                 withContext(Dispatchers.Main) {
-                    state = PairingUiState.Success(deviceName, connection.lastKeyOrigin)
+                    state = PairingUiState.Success(deviceName, connection.lastKeyOrigin, connection.lastRetrieveMissStatus)
                 }
             } catch (e: AdbApprovalTimeoutException) {
                 withContext(Dispatchers.Main) {
@@ -135,10 +135,13 @@ fun PairingDialogHost(controller: PairingController) {
             body = "You can now control it from the dashboard." +
                 // Diagnostic for the "keeps asking to re-approve" bug report: if this
                 // reads "freshly generated" on anything but the very first-ever pairing
-                // attempt, the identity key isn't actually persisting in the Keychain.
+                // attempt, the identity key isn't actually persisting in the Keychain --
+                // retrieveMissStatus is the raw Keychain OSStatus that made it look
+                // like nothing was stored, straight from SecItemCopyMatching.
                 when (state.keyOrigin) {
                     KeyOrigin.REUSED_EXISTING -> "\n\n(Reused existing identity key.)"
-                    KeyOrigin.FRESHLY_GENERATED -> "\n\n(Generated a new identity key for this pairing.)"
+                    KeyOrigin.FRESHLY_GENERATED -> "\n\n(Generated a new identity key for this pairing." +
+                        (state.retrieveMissStatus?.let { " Keychain lookup status: $it." } ?: "") + ")"
                     null -> ""
                 },
             onDismiss = { controller.dismiss() },
