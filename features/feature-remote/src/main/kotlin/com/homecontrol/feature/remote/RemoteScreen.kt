@@ -44,6 +44,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.FastForward
@@ -68,6 +69,8 @@ import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
@@ -127,10 +130,13 @@ import kotlin.math.roundToInt
 fun RemoteScreen(
     onBack: () -> Unit,
     onSettingsClick: () -> Unit,
+    onSwitchDevice: (deviceId: String) -> Unit,
     viewModel: RemoteViewModel = koinViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val device = uiState.device
+    val allDevices by viewModel.allDevices.collectAsState()
+    var showDeviceMenu by remember { mutableStateOf(false) }
 
     // The underlying connection (a raw socket, for most device types) can
     // die silently while the screen is stopped — the phone locking, the app
@@ -160,10 +166,29 @@ fun RemoteScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        StatusDot(isConnected = uiState.isConnected)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(device?.name ?: "Remote")
+                    Box {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable(enabled = allDevices.size > 1) { showDeviceMenu = true },
+                        ) {
+                            StatusDot(isConnected = uiState.isConnected)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(device?.name ?: "Remote")
+                            if (allDevices.size > 1) {
+                                Icon(Icons.Filled.ArrowDropDown, contentDescription = "Switch device")
+                            }
+                        }
+                        DropdownMenu(expanded = showDeviceMenu, onDismissRequest = { showDeviceMenu = false }) {
+                            allDevices.forEach { other ->
+                                DropdownMenuItem(
+                                    text = { Text(other.name) },
+                                    onClick = {
+                                        showDeviceMenu = false
+                                        if (other.id != device?.id) onSwitchDevice(other.id)
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
                 navigationIcon = {

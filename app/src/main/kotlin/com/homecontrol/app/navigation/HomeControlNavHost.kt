@@ -18,6 +18,7 @@ import com.homecontrol.feature.dashboard.DASHBOARD_ROUTE
 import com.homecontrol.feature.dashboard.dashboardScreen
 import com.homecontrol.feature.devices.DEVICES_ROUTE
 import com.homecontrol.feature.devices.devicesScreen
+import com.homecontrol.feature.remote.REMOTE_ROUTE
 import com.homecontrol.feature.remote.remoteRoute
 import com.homecontrol.feature.remote.remoteScreen
 import com.homecontrol.feature.splash.SPLASH_ROUTE
@@ -58,6 +59,14 @@ fun HomeControlNavHost(navController: NavHostController = rememberNavController(
         remoteScreen(
             onBack = { navController.popBackStack() },
             onSettingsClick = { navController.navigate(SETTINGS_ROUTE) },
+            // Replace the current remote screen instead of stacking a new one
+            // on top — otherwise switching between devices a few times would
+            // leave a long chain of dead remote screens behind the back button.
+            onSwitchDevice = { deviceId ->
+                navController.navigate(remoteRoute(deviceId)) {
+                    popUpTo(REMOTE_ROUTE) { inclusive = true }
+                }
+            },
         )
         camerasScreen(
             onBack = { navController.popBackStack() },

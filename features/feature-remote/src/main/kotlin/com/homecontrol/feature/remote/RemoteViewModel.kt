@@ -11,9 +11,11 @@ import com.homecontrol.core.model.MouseButton
 import com.homecontrol.core.model.PairedDevice
 import com.homecontrol.core.model.RemoteKey
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -37,6 +39,10 @@ class RemoteViewModel(
 
     private val _uiState = MutableStateFlow(RemoteUiState())
     val uiState: StateFlow<RemoteUiState> = _uiState.asStateFlow()
+
+    /** Every paired device, for the "switch device" dropdown in the top bar — lets the user jump straight to another device's remote without going back to the dashboard first. */
+    val allDevices: StateFlow<List<PairedDevice>> = pairedDeviceRepository.observePairedDevices()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _apps = MutableStateFlow<List<AppInfo>>(emptyList())
     /** Whatever app buttons were configured on the PC — the phone only ever displays and launches these, never defines them. */

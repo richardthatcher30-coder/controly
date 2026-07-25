@@ -10,11 +10,15 @@ const val REMOTE_ROUTE = "remote/{$DEVICE_ID_ARG}"
 
 fun remoteRoute(deviceId: String) = "remote/$deviceId"
 
-fun NavGraphBuilder.remoteScreen(onBack: () -> Unit, onSettingsClick: () -> Unit) {
+fun NavGraphBuilder.remoteScreen(
+    onBack: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onSwitchDevice: (deviceId: String) -> Unit,
+) {
     composable(
         route = REMOTE_ROUTE,
         arguments = listOf(navArgument(DEVICE_ID_ARG) { type = NavType.StringType }),
     ) {
-        RemoteScreen(onBack = onBack, onSettingsClick = onSettingsClick)
+        RemoteScreen(onBack = onBack, onSettingsClick = onSettingsClick, onSwitchDevice = onSwitchDevice)
     }
 }
