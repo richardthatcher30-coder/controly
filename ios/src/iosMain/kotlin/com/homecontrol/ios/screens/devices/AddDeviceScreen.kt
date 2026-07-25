@@ -10,9 +10,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -23,7 +26,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -33,9 +38,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.homecontrol.core.model.DeviceCapabilities
 import com.homecontrol.core.model.DeviceType
+import com.homecontrol.core.model.DiscoveredDevice
 import com.homecontrol.core.model.PairedDevice
 import com.homecontrol.ios.adb.AdbApprovalTimeoutException
 import com.homecontrol.ios.adb.AdbConnection
+import com.homecontrol.ios.discovery.MdnsScanner
 import com.homecontrol.ios.storage.PairedDeviceStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -60,11 +67,12 @@ private sealed interface PairingUiState {
 }
 
 /**
- * Manual "Add by IP" form + pairing flow. True auto-discovery (mDNS/SSDP,
- * matching Android's `DevicesScreen`) is deferred — see this build's own
- * scope notes — so manual entry is the primary path on iOS for now, exactly
- * like Android's own "Add by IP" fallback for devices that don't advertise
- * themselves (Fire TV included).
+ * Auto-discovery (via [MdnsScanner], Google Cast advertisement) shown above
+ * a manual "Add by IP" form — mirroring Android's `DevicesScreen`, which
+ * also keeps a manual fallback for devices that don't advertise themselves
+ * (Fire TV included; Fire TV never shows up in the discovered list here).
+ * Tapping a discovered device or submitting the manual form both funnel into
+ * the same [startPairing] flow.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,8 +81,62 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
     var ipAddress by remember { mutableStateOf("") }
     var deviceType by remember { mutableStateOf(DeviceType.ANDROID_TV) }
     var pairingState by remember { mutableStateOf<PairingUiState>(PairingUiState.Idle) }
+    val discoveredDevices = remember { mutableStateListOf<DiscoveredDevice>() }
     val scope = rememberCoroutineScope()
     val store = remember { PairedDeviceStore() }
+
+    DisposableEffect(Unit) {
+        val scanner = MdnsScanner()
+        scanner.startScan { device ->
+            if (discoveredDevices.none { it.discoveryId == device.discoveryId }) {
+                discoveredDevices.add(device)
+            }
+        }
+        onDispose { scanner.stopScan() }
+    }
+
+    fun startPairing(ip: String, deviceName: String, selectedType: DeviceType) {
+        if (selectedType !in ADB_SUPPORTED_TYPES) {
+            pairingState = PairingUiState.Failed(
+                deviceName,
+                "${deviceTypeLabel(selectedType)} pairing isn't supported on iOS yet — coming soon.",
+            )
+            return
+        }
+        pairingState = PairingUiState.InProgress(deviceName)
+        scope.launch(Dispatchers.IO) {
+            try {
+                AdbConnection().pair(ip)
+                store.add(
+                    PairedDevice(
+                        id = "adb:$ip",
+                        name = deviceName,
+                        manufacturer = "",
+                        model = "",
+                        ipAddress = ip,
+                        macAddress = null,
+                        deviceType = selectedType,
+                        firmwareVersion = null,
+                        capabilities = DeviceCapabilities.NONE,
+                        isOnline = true,
+                        pluginId = "androidtv-adb-ios",
+                    ),
+                )
+                withContext(Dispatchers.Main) { pairingState = PairingUiState.Success(deviceName) }
+            } catch (e: AdbApprovalTimeoutException) {
+                withContext(Dispatchers.Main) {
+                    pairingState = PairingUiState.Failed(
+                        deviceName,
+                        "Approval timed out — check the TV's screen and try again.",
+                    )
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    pairingState = PairingUiState.Failed(deviceName, e.message ?: "Couldn't connect to $ip")
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -95,13 +157,38 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
                 .padding(24.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
+            if (discoveredDevices.isEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.height(16.dp).width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Searching your network for devices…",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                Text(text = "Found on your network", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                discoveredDevices.forEach { device ->
+                    DiscoveredDeviceRow(
+                        device = device,
+                        onClick = { startPairing(device.ipAddress, device.name, device.deviceTypeHint) },
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(text = "Or add by IP address", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Auto-discovery is coming in a future update — for now, enter your " +
-                    "device's IP address directly.",
+                text = "For devices that don't show up above — Fire TV in particular never " +
+                    "advertises itself on the network, so this is the only way to add one.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
                 value = name,
@@ -149,54 +236,7 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
                 onClick = {
                     val trimmedIp = ipAddress.trim()
                     val deviceName = name.trim().ifEmpty { deviceTypeLabel(deviceType) }
-                    val selectedType = deviceType
-
-                    if (selectedType !in ADB_SUPPORTED_TYPES) {
-                        pairingState = PairingUiState.Failed(
-                            deviceName,
-                            "${deviceTypeLabel(selectedType)} pairing isn't supported on iOS yet — coming soon.",
-                        )
-                        return@Button
-                    }
-
-                    pairingState = PairingUiState.InProgress(deviceName)
-                    scope.launch(Dispatchers.IO) {
-                        try {
-                            AdbConnection().pair(trimmedIp)
-                            store.add(
-                                PairedDevice(
-                                    id = "adb:$trimmedIp",
-                                    name = deviceName,
-                                    manufacturer = "",
-                                    model = "",
-                                    ipAddress = trimmedIp,
-                                    macAddress = null,
-                                    deviceType = selectedType,
-                                    firmwareVersion = null,
-                                    capabilities = DeviceCapabilities.NONE,
-                                    isOnline = true,
-                                    pluginId = "androidtv-adb-ios",
-                                ),
-                            )
-                            withContext(Dispatchers.Main) {
-                                pairingState = PairingUiState.Success(deviceName)
-                            }
-                        } catch (e: AdbApprovalTimeoutException) {
-                            withContext(Dispatchers.Main) {
-                                pairingState = PairingUiState.Failed(
-                                    deviceName,
-                                    "Approval timed out — check the TV's screen and try again.",
-                                )
-                            }
-                        } catch (e: Exception) {
-                            withContext(Dispatchers.Main) {
-                                pairingState = PairingUiState.Failed(
-                                    deviceName,
-                                    e.message ?: "Couldn't connect to $trimmedIp",
-                                )
-                            }
-                        }
-                    }
+                    startPairing(trimmedIp, deviceName, deviceType)
                 },
                 enabled = ipAddress.isNotBlank() && pairingState !is PairingUiState.InProgress,
                 modifier = Modifier.fillMaxWidth(),
@@ -230,6 +270,26 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
         )
 
         PairingUiState.Idle -> Unit
+    }
+}
+
+@Composable
+private fun DiscoveredDeviceRow(device: DiscoveredDevice, onClick: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = device.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = device.ipAddress,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(onClick = onClick) { Text("Pair") }
+        }
     }
 }
 
