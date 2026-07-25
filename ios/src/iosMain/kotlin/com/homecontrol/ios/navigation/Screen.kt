@@ -12,4 +12,5 @@ sealed interface Screen {
     data object Dashboard : Screen
     data object About : Screen
     data object AddDevice : Screen
+    data class Remote(val deviceId: String, val deviceName: String, val ipAddress: String) : Screen
 }

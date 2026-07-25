@@ -10,8 +10,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.homecontrol.ios.screens.about.AboutScreen
-import com.homecontrol.ios.screens.devices.AddDeviceScreen
 import com.homecontrol.ios.screens.dashboard.DashboardScreen
+import com.homecontrol.ios.screens.devices.AddDeviceScreen
+import com.homecontrol.ios.screens.remote.RemoteScreen
 import com.homecontrol.ios.theme.ControlyTheme
 
 /** Composition root — replaces `MainViewController`'s Phase 1 placeholder body. */
@@ -30,13 +31,21 @@ fun ControlyApp() {
 
     ControlyTheme(darkTheme = true) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            when (currentScreen) {
+            when (val screen = currentScreen) {
                 Screen.Dashboard -> DashboardScreen(
                     onAddDevice = { push(Screen.AddDevice) },
                     onAbout = { push(Screen.About) },
+                    onDeviceClick = { device ->
+                        push(Screen.Remote(device.id, device.name, device.ipAddress))
+                    },
                 )
                 Screen.About -> AboutScreen(onBack = { pop() })
                 Screen.AddDevice -> AddDeviceScreen(onBack = { pop() }, onPaired = { pop() })
+                is Screen.Remote -> RemoteScreen(
+                    deviceName = screen.deviceName,
+                    ipAddress = screen.ipAddress,
+                    onBack = { pop() },
+                )
             }
         }
     }

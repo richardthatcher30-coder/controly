@@ -42,7 +42,7 @@ import com.homecontrol.ios.storage.PairedDeviceStore
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardScreen(onAddDevice: () -> Unit, onAbout: () -> Unit) {
+fun DashboardScreen(onAddDevice: () -> Unit, onAbout: () -> Unit, onDeviceClick: (PairedDevice) -> Unit) {
     val store = remember { PairedDeviceStore() }
     var devices by remember { mutableStateOf(store.list()) }
     var deviceToRemove by remember { mutableStateOf<PairedDevice?>(null) }
@@ -75,7 +75,7 @@ fun DashboardScreen(onAddDevice: () -> Unit, onAbout: () -> Unit) {
                 items(devices, key = { it.id }) { device ->
                     DeviceRow(
                         device = device,
-                        onClick = { /* Remote control screen — a later phase */ },
+                        onClick = { onDeviceClick(device) },
                         onLongPress = { deviceToRemove = device },
                     )
                 }
