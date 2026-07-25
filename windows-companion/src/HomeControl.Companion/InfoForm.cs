@@ -31,7 +31,7 @@ internal sealed class InfoForm : Form
         _server = server;
         _uiContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
-        Text = "HomeControl Companion";
+        Text = "Controly Companion";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false;
@@ -85,7 +85,7 @@ internal sealed class InfoForm : Form
         };
         var titleLabel = new Label
         {
-            Text = "HomeControl Companion",
+            Text = "Controly Companion",
             ForeColor = Color.White,
             Font = new Font("Segoe UI", 13F, FontStyle.Bold),
             AutoSize = false,

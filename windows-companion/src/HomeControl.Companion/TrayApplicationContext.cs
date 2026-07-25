@@ -43,7 +43,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             Icon = AppIcon.Default,
             Visible = true,
-            Text = "HomeControl Companion",
+            Text = "Controly Companion",
             ContextMenuStrip = BuildContextMenu(),
         };
         _trayIcon.MouseClick += OnTrayIconMouseClick;
@@ -57,7 +57,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (isConnected == _wasConnected) return;
         _wasConnected = isConnected;
 
-        _trayIcon.BalloonTipTitle = "HomeControl Companion";
+        _trayIcon.BalloonTipTitle = "Controly Companion";
         _trayIcon.BalloonTipText = isConnected ? "Mobile Connected" : "Mobile Disconnected";
         _trayIcon.BalloonTipIcon = ToolTipIcon.Info;
         _trayIcon.ShowBalloonTip(3000);
@@ -66,7 +66,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private ContextMenuStrip BuildContextMenu()
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("HomeControl Companion", null, (_, _) => { }).Enabled = false;
+        menu.Items.Add("Controly Companion", null, (_, _) => { }).Enabled = false;
         menu.Items.Add(new ToolStripSeparator());
 
         var startupItem = new ToolStripMenuItem("Start with Windows")
@@ -81,6 +81,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add("Info", null, (_, _) => ShowInfoForm());
         menu.Items.Add("Manage app buttons...", null, (_, _) => ShowManageAppButtonsForm());
         menu.Items.Add("Quick actions...", null, (_, _) => ShowQuickActionsForm());
+        menu.Items.Add("Support", null, (_, _) => ShowSupportForm());
         menu.Items.Add("Exit", null, OnExitClicked);
         return menu;
     }
@@ -108,6 +109,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void ShowQuickActionsForm()
     {
         using var form = new QuickActionsForm(new QuickActionsStore());
+        form.ShowDialog();
+    }
+
+    private void ShowSupportForm()
+    {
+        using var form = new SupportForm();
         form.ShowDialog();
     }
 

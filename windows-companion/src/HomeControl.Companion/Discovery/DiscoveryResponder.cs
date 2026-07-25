@@ -38,11 +38,11 @@ internal sealed class DiscoveryResponder : IDisposable
                 var text = Encoding.UTF8.GetString(result.Buffer);
                 if (text.StartsWith(DiscoverMessage, StringComparison.Ordinal))
                 {
-                    // "HomeControl (HOSTNAME)" is the display name shown in the
+                    // "Controly (HOSTNAME)" is the display name shown in the
                     // app's device list — deliberately unmistakable among SSDP
                     // noise from routers, printers, and Windows' own UPnP host.
                     var response = Encoding.UTF8.GetBytes(
-                        $"{ResponsePrefix} HomeControl ({NetworkInfo.HostName}) {NetworkInfo.GetPrimaryMacAddress()}");
+                        $"{ResponsePrefix} Controly ({NetworkInfo.HostName}) {NetworkInfo.GetPrimaryMacAddress()}");
                     await _client.SendAsync(response, result.RemoteEndPoint, cancellationToken);
                 }
             }

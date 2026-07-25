@@ -82,7 +82,7 @@ class WindowsPlugin(
                     pinnedFingerprint = null,
                 )
 
-                val approved = session.pair(deviceName = "HomeControl")
+                val approved = session.pair(deviceName = "Controly")
                 if (!approved) {
                     session.close()
                     return@withContext PairingResult.Failed(PairingFailureReason.REJECTED_BY_DEVICE)

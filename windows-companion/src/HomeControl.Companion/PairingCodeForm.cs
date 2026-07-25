@@ -13,7 +13,7 @@ internal sealed class PairingCodeForm : Form
 {
     public PairingCodeForm(string code, string deviceName)
     {
-        Text = "HomeControl Pairing";
+        Text = "Controly Pairing";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false;

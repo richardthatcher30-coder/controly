@@ -6,10 +6,21 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- RootNamespace/AssemblyName deliberately NOT renamed to Controly —
+         internal-only identifiers (namespace, exe filename, AppData storage
+         paths under this same name) that renaming would churn across every
+         file for no user-visible benefit, and would silently reset existing
+         installs' "Start with Windows" state and stored pairings/settings on
+         upgrade. User-facing branding (window titles, tray text, installer
+         name) uses "Controly" — see Product/AssemblyTitle below. -->
     <RootNamespace>HomeControl.Companion</RootNamespace>
     <AssemblyName>HomeControl.Companion</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
     <ApplicationIcon>Assets\homecontrol.ico</ApplicationIcon>
+    <Product>Controly Companion</Product>
+    <AssemblyTitle>Controly Companion</AssemblyTitle>
+    <Company>Controly</Company>
+    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

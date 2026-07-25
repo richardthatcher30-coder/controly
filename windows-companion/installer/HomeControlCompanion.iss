@@ -1,12 +1,13 @@
-; Inno Setup script for HomeControl Companion.
+; Inno Setup script for Controly Companion (internal project/exe name is
+; still "HomeControl.Companion" — see the csproj comment for why).
 ; Build with: "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" HomeControlCompanion.iss
 ; Expects the self-contained single-file publish output at
 ; ..\src\HomeControl.Companion\publish\HomeControl.Companion.exe — run
 ; publish.ps1 (or the dotnet publish command in windows-companion/README) first.
 
-#define MyAppName "HomeControl Companion"
+#define MyAppName "Controly Companion"
 #define MyAppVersion "1.0.0"
-#define MyAppPublisher "HomeControl"
+#define MyAppPublisher "Controly"
 #define MyAppExeName "HomeControl.Companion.exe"
 #define PublishDir "..\src\HomeControl.Companion\publish"
 
