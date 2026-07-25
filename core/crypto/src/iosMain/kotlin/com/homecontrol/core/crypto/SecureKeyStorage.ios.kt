@@ -10,6 +10,7 @@ import platform.CoreFoundation.CFTypeRefVar
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.NSData
 import platform.Foundation.NSMutableDictionary
+import platform.Foundation.NSString
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
@@ -48,11 +49,11 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
     actual fun store(alias: String, bytes: ByteArray) {
         remove(alias) // SecItemAdd fails with errSecDuplicateItem if the alias is already present
         val query = NSMutableDictionary().apply {
-            setObject(kSecClassGenericPassword, forKey = kSecClass)
-            setObject(SERVICE_NAME, forKey = kSecAttrService)
-            setObject(alias, forKey = kSecAttrAccount)
-            setObject(bytes.toNSData(), forKey = kSecValueData)
-            setObject(kSecAttrAccessibleWhenUnlockedThisDeviceOnly, forKey = kSecAttrAccessible)
+            setObject(kSecClassGenericPassword.asNSString(), forKey = kSecClass.asNSString())
+            setObject(SERVICE_NAME, forKey = kSecAttrService.asNSString())
+            setObject(alias, forKey = kSecAttrAccount.asNSString())
+            setObject(bytes.toNSData(), forKey = kSecValueData.asNSString())
+            setObject(kSecAttrAccessibleWhenUnlockedThisDeviceOnly.asNSString(), forKey = kSecAttrAccessible.asNSString())
         }
         @Suppress("UNCHECKED_CAST")
         val status = SecItemAdd(query as CFDictionaryRef, null)
@@ -61,11 +62,11 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
 
     actual fun retrieve(alias: String): ByteArray? = memScoped {
         val query = NSMutableDictionary().apply {
-            setObject(kSecClassGenericPassword, forKey = kSecClass)
-            setObject(SERVICE_NAME, forKey = kSecAttrService)
-            setObject(alias, forKey = kSecAttrAccount)
-            setObject(true, forKey = kSecReturnData)
-            setObject(kSecMatchLimitOne, forKey = kSecMatchLimit)
+            setObject(kSecClassGenericPassword.asNSString(), forKey = kSecClass.asNSString())
+            setObject(SERVICE_NAME, forKey = kSecAttrService.asNSString())
+            setObject(alias, forKey = kSecAttrAccount.asNSString())
+            setObject(true, forKey = kSecReturnData.asNSString())
+            setObject(kSecMatchLimitOne.asNSString(), forKey = kSecMatchLimit.asNSString())
         }
         val result = alloc<CFTypeRefVar>()
         @Suppress("UNCHECKED_CAST")
@@ -76,12 +77,21 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
 
     actual fun remove(alias: String) {
         val query = NSMutableDictionary().apply {
-            setObject(kSecClassGenericPassword, forKey = kSecClass)
-            setObject(SERVICE_NAME, forKey = kSecAttrService)
-            setObject(alias, forKey = kSecAttrAccount)
+            setObject(kSecClassGenericPassword.asNSString(), forKey = kSecClass.asNSString())
+            setObject(SERVICE_NAME, forKey = kSecAttrService.asNSString())
+            setObject(alias, forKey = kSecAttrAccount.asNSString())
         }
         @Suppress("UNCHECKED_CAST")
         SecItemDelete(query as CFDictionaryRef)
         // Return status intentionally ignored — errSecItemNotFound is an expected, benign outcome here.
     }
 }
+
+/**
+ * kSec* constants are typed `CPointer<__CFString>?` by cinterop, not
+ * auto-bridged to `NSString`/`NSCopyingProtocol` despite CFString/NSString
+ * being toll-free bridged at the ObjC runtime level — an explicit unchecked
+ * cast is required to use them as `NSDictionary` keys/values.
+ */
+@Suppress("CAST_NEVER_SUCCEEDS", "UNCHECKED_CAST")
+private fun kotlinx.cinterop.CPointer<*>?.asNSString(): NSString = this as NSString

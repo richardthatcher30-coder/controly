@@ -87,8 +87,9 @@ fun derSequence(vararg elements: ByteArray): ByteArray =
  * 0x00 pad byte if the high bit is set (so it isn't misread as negative).
  */
 fun derInteger(unsignedBigEndian: ByteArray): ByteArray {
-    val trimmed = unsignedBigEndian.dropWhile { it == 0.toByte() }.toByteArray()
-        .ifEmpty { byteArrayOf(0) }
+    val dropped = unsignedBigEndian.dropWhile { it == 0.toByte() }.toByteArray()
+    // ByteArray has no stdlib ifEmpty (unlike Array<T>/Collection/etc.) — check manually.
+    val trimmed = if (dropped.isEmpty()) byteArrayOf(0) else dropped
     val content = if (trimmed[0].toInt() and 0x80 != 0) byteArrayOf(0) + trimmed else trimmed
     return derTlv(0x02, content)
 }

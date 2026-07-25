@@ -12,6 +12,7 @@ import platform.CoreFoundation.CFErrorRefVar
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.NSData
 import platform.Foundation.NSMutableDictionary
+import platform.Foundation.NSString
 import platform.Security.SecKeyCopyExternalRepresentation
 import platform.Security.SecKeyCreateRandomKey
 import platform.Security.kSecAttrKeySizeInBits
@@ -43,9 +44,13 @@ class AdbKeyStore(private val secureKeyStorage: SecureKeyStorage = SecureKeyStor
     }
 
     private fun generateKeyPkcs8(): ByteArray = memScoped {
+        // kSec* constants are typed CPointer<__CFString>? by cinterop, not auto-bridged
+        // to NSString/NSCopyingProtocol despite CFString/NSString being toll-free bridged
+        // at the ObjC runtime level — an explicit unchecked cast is required.
+        @Suppress("CAST_NEVER_SUCCEEDS", "UNCHECKED_CAST")
         val attributes = NSMutableDictionary().apply {
-            setObject(kSecAttrKeyTypeRSA, forKey = kSecAttrKeyType)
-            setObject(RSA_KEY_SIZE_BITS, forKey = kSecAttrKeySizeInBits)
+            setObject(kSecAttrKeyTypeRSA as NSString, forKey = kSecAttrKeyType as NSString)
+            setObject(RSA_KEY_SIZE_BITS, forKey = kSecAttrKeySizeInBits as NSString)
         }
         val keyError = alloc<CFErrorRefVar>()
         @Suppress("UNCHECKED_CAST")

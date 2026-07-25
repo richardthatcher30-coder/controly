@@ -49,9 +49,13 @@ actual fun signAdbAuthToken(token: ByteArray, privateKeyPkcs8: ByteArray): ByteA
     val pkcs1 = pkcs8ToPkcs1(privateKeyPkcs8)
     return memScoped {
         val keyData = pkcs1.toNSData()
+        // kSec* constants are typed CPointer<__CFString>? by cinterop, not auto-bridged
+        // to NSString/NSCopyingProtocol despite CFString/NSString being toll-free bridged
+        // at the ObjC runtime level — an explicit unchecked cast is required.
+        @Suppress("CAST_NEVER_SUCCEEDS", "UNCHECKED_CAST")
         val attributes = NSMutableDictionary().apply {
-            setObject(kSecAttrKeyTypeRSA, forKey = kSecAttrKeyType)
-            setObject(kSecAttrKeyClassPrivate, forKey = kSecAttrKeyClass)
+            setObject(kSecAttrKeyTypeRSA as NSString, forKey = kSecAttrKeyType as NSString)
+            setObject(kSecAttrKeyClassPrivate as NSString, forKey = kSecAttrKeyClass as NSString)
         }
 
         val keyError = alloc<CFErrorRefVar>()
