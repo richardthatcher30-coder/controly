@@ -71,9 +71,17 @@ workflows:
           xcode-project use-profiles
       - name: Build and archive the app
         script: |
+          # fetch-signing-files has no certificate-type flag — an IOS_APP_STORE
+          # profile always gets created against the classic "iOS Distribution"
+          # certificate type, not the newer unified "Apple Distribution" one.
+          # But build-ipa defaults CODE_SIGN_IDENTITY to "Apple Distribution"
+          # regardless, so archiving failed with "No iOS Distribution signing
+          # certificate found" even though that exact certificate exists.
+          # Overriding it back to match what was actually created.
           xcode-project build-ipa \
             --project "$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME"
+            --scheme "$XCODE_SCHEME" \
+            --archive-xcargs "CODE_SIGN_IDENTITY=iOS Distribution"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
