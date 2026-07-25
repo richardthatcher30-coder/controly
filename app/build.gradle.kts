@@ -24,7 +24,7 @@ android {
 
     defaultConfig {
         applicationId = "com.controly.app"
-        versionCode = 2
+        versionCode = 3
         versionName = "0.1.1"
     }
 
