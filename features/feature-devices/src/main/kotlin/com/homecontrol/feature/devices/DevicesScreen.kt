@@ -24,6 +24,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -241,6 +242,16 @@ private fun PairingDialog(
     )
 }
 
+// Fire TV and Android TV/Google TV both just label the same underlying ADB
+// plugin, so there's no functional difference between them — but Sony and
+// Samsung genuinely speak different network protocols (Sony's PIN-paired
+// ScalarWebAPI/IRCC-IP vs Samsung's own on-screen-approval TCP protocol), so
+// unlike the "TV vs Windows PC" split above them, these can't be collapsed
+// into one generic "TV" choice — the app has no way to guess which protocol
+// to speak without being told the brand.
+private val TV_BRAND_OPTIONS = MANUAL_DEVICE_TYPE_OPTIONS.filter { it.second != DeviceType.WINDOWS_PC }
+private val WINDOWS_PC_OPTION = MANUAL_DEVICE_TYPE_OPTIONS.first { it.second == DeviceType.WINDOWS_PC }
+
 @Composable
 private fun ManualAddDeviceDialog(
     onDismiss: () -> Unit,
@@ -248,13 +259,15 @@ private fun ManualAddDeviceDialog(
 ) {
     var name by remember { mutableStateOf("") }
     var ipAddress by remember { mutableStateOf("") }
-    var deviceType by remember { mutableStateOf(MANUAL_DEVICE_TYPE_OPTIONS.first().second) }
+    var isWindowsPc by remember { mutableStateOf(false) }
+    var tvBrand by remember { mutableStateOf(TV_BRAND_OPTIONS.first().second) }
+    val deviceType = if (isWindowsPc) WINDOWS_PC_OPTION.second else tvBrand
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add device by IP") },
         text = {
-            // Scrollable: five device-type rows plus two text fields don't
+            // Scrollable: the device-type rows plus two text fields don't
             // fit the available height in landscape (or on small screens) —
             // without this, Compose was cramming every radio row into zero
             // height, collapsing the whole list down to one radio button
@@ -279,17 +292,23 @@ private fun ManualAddDeviceDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(text = "Device type", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
-                Column {
-                    MANUAL_DEVICE_TYPE_OPTIONS.forEach { (label, type) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { deviceType = type }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(selected = deviceType == type, onClick = { deviceType = type })
-                            Text(text = label, modifier = Modifier.padding(start = 8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !isWindowsPc, onClick = { isWindowsPc = false }, label = { Text("TV") })
+                    FilterChip(selected = isWindowsPc, onClick = { isWindowsPc = true }, label = { Text(WINDOWS_PC_OPTION.first) })
+                }
+                if (!isWindowsPc) {
+                    Column {
+                        TV_BRAND_OPTIONS.forEach { (label, type) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { tvBrand = type }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(selected = tvBrand == type, onClick = { tvBrand = type })
+                                Text(text = label, modifier = Modifier.padding(start = 8.dp))
+                            }
                         }
                     }
                 }
