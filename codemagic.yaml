@@ -99,30 +99,37 @@ workflows:
           xcode-project use-profiles
       - name: Build and archive the app
         script: |
-          # NOT using xcode-project build-ipa here — confirmed across two
-          # real runs that it unconditionally sets CODE_SIGN_IDENTITY to the
-          # newer unified "Apple Distribution" when archiving, with no way
-          # to override it: --archive-xcargs values get whitespace-split
-          # instead of shell-quoted (turning "iOS Distribution" into two
-          # broken arguments), AND the tool re-appends its own value
-          # afterward regardless of any override — xcodebuild's last-value-
-          # wins semantics silently discard it either way. But the profile
-          # from the step above is bound to a classic "iOS Distribution"
-          # certificate, not the unified one, so archiving failed with "No
-          # iOS Distribution signing certificate found" even though that
-          # exact certificate existed and use-profiles had just configured
-          # the project to use it. Calling xcodebuild directly instead,
-          # where we control every argument and nothing re-appends a
-          # conflicting default afterward.
+          # NOT using xcode-project build-ipa here — confirmed it
+          # unconditionally sets CODE_SIGN_IDENTITY to a fixed default when
+          # archiving, with no way to override it via --archive-xcargs (the
+          # tool whitespace-splits values with spaces instead of
+          # shell-quoting them, AND re-appends its own value afterward
+          # regardless — xcodebuild's last-value-wins semantics silently
+          # discard any override either way).
+          #
+          # Also stopped guessing at a hardcoded identity string
+          # ("iOS Distribution" vs "Apple Distribution") ourselves — which
+          # actual certificate type ends up available locally depends on
+          # cert/key history from earlier runs (confirmed: it's changed
+          # between runs as the signing setup evolved), so hardcoding either
+          # name is fragile. Ask the keychain directly what's actually there
+          # instead, and use exactly that.
           mkdir -p build/ios/xcarchive build/ios/ipa
+          CERT_IDENTITY=$(security find-identity -v -p codesigning | sed -n 's/.*"\(.*\)".*/\1/p' | head -n1)
+          if [ -z "$CERT_IDENTITY" ]; then
+            echo "No codesigning identity found in the keychain — Fetch signing files should have installed one."
+            exit 1
+          fi
+          echo "Using codesigning identity: $CERT_IDENTITY"
+
           xcodebuild archive \
             -project "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -archivePath build/ios/xcarchive/iosApp.xcarchive \
-            CODE_SIGN_IDENTITY="iOS Distribution" \
+            CODE_SIGN_IDENTITY="$CERT_IDENTITY" \
             DEVELOPMENT_TEAM=PVL8GCZUC3
 
-          cat > /tmp/export_options.plist <<'PLIST'
+          cat > /tmp/export_options.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -134,7 +141,7 @@ workflows:
             <key>signingStyle</key>
             <string>manual</string>
             <key>signingCertificate</key>
-            <string>iOS Distribution</string>
+            <string>$CERT_IDENTITY</string>
             <key>destination</key>
             <string>export</string>
           </dict>
