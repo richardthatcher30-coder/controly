@@ -17,6 +17,16 @@ import kotlinx.coroutines.test.runTest
  * `createHash('sha256')` + `createHmac('sha256', ...)`) -- a third, unrelated
  * implementation of the same standard primitives -- specifically so this test
  * isn't just checking `cryptography-core` against itself.
+ *
+ * Known-failing on `iosSimulatorArm64Test` specifically (not `iosArm64`, i.e.
+ * real devices): `cryptography-provider-apple`'s ECDH support routes through
+ * CryptoKit's Secure Enclave-backed key agreement, which Apple's own docs
+ * confirm is unavailable in the Simulator (no Secure Enclave hardware to
+ * back it) -- confirmed via two real CodeMagic runs (0.5.0 and 0.6.0 both
+ * fail identically with "Algorithm not found: ECDH", on the exact two tests
+ * that touch EC keys; the pure-HMAC test always passes). This is exercised
+ * for real via the actual iOS app on a real device instead, since CI has no
+ * way to run `iosArm64Test` without a physically attached device.
  */
 @OptIn(ExperimentalEncodingApi::class)
 class CompanionCryptoTest {
