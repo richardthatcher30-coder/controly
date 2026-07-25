@@ -44,6 +44,8 @@ workflows:
       # even ran. The "Fetch signing files"/"Use signing files" scripts
       # below (with fetch-signing-files' own --create flag) do the actual
       # creation, using the credentials from the integration above.
+      groups:
+        - ios_release # holds CERTIFICATE_PRIVATE_KEY once bootstrapped — see the Fetch signing files step
       vars:
         XCODE_WORKSPACE: "iosApp/iosApp.xcodeproj"
         XCODE_SCHEME: "iosApp"
@@ -76,7 +78,27 @@ workflows:
           # here — fetch-signing-files then reuses it instead of creating a
           # mismatched one, since a DISTRIBUTION cert is valid for
           # IOS_APP_STORE profiles too.
-          openssl genrsa -out /tmp/certificate_key.pem 2048
+          #
+          # BUT: generating a fresh key every run doesn't actually work more
+          # than once. Apple caps an account at one active Distribution
+          # certificate, so the next run's new random key can never match
+          # the previous run's now-existing certificate, and creation starts
+          # failing with "You already have a current Distribution
+          # certificate" (409) -- confirmed happening on the second run.
+          # Reuse a persisted key via CERTIFICATE_PRIVATE_KEY (from the
+          # ios_release group) once it's been bootstrapped; only the very
+          # first run (or one after the account's Distribution certs were
+          # manually revoked) generates a fresh one, saved as a build
+          # artifact specifically so it can be copied into that group and
+          # reused on every run after.
+          if [ -n "$CERTIFICATE_PRIVATE_KEY" ]; then
+            echo "Using persisted CERTIFICATE_PRIVATE_KEY"
+            printf '%s' "$CERTIFICATE_PRIVATE_KEY" > /tmp/certificate_key.pem
+          else
+            echo "No CERTIFICATE_PRIVATE_KEY set yet -- generating one (bootstrap run)"
+            openssl genrsa -out /tmp/certificate_key.pem 2048
+          fi
+          cp /tmp/certificate_key.pem "$CM_BUILD_DIR/certificate_key_ADD_TO_ios_release_GROUP.pem"
           app-store-connect certificates create \
             --type DISTRIBUTION \
             --certificate-key @file:/tmp/certificate_key.pem \
@@ -96,6 +118,10 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
+      # Only produced on a bootstrap run (no CERTIFICATE_PRIVATE_KEY set
+      # yet) -- download it once, add it as CERTIFICATE_PRIVATE_KEY (Secure)
+      # in the ios_release group, then this stops appearing on future runs.
+      - "*_ADD_TO_ios_release_GROUP.pem"
     publishing:
       # Enabled: user confirmed intent to get a build (even the Phase 1
       # placeholder) into TestFlight now, to validate the signing/release
