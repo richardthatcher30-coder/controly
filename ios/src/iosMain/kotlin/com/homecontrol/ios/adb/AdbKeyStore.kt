@@ -5,6 +5,7 @@ import com.homecontrol.core.crypto.pkcs1ToPkcs8
 import com.homecontrol.core.crypto.toByteArray
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.interpretObjCPointer
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import platform.CoreFoundation.CFDictionaryRef
@@ -44,13 +45,17 @@ class AdbKeyStore(private val secureKeyStorage: SecureKeyStorage = SecureKeyStor
     }
 
     private fun generateKeyPkcs8(): ByteArray = memScoped {
-        // kSec* constants are typed CPointer<__CFString>? by cinterop, not auto-bridged
-        // to NSString/NSCopyingProtocol despite CFString/NSString being toll-free bridged
-        // at the ObjC runtime level — an explicit unchecked cast is required.
-        @Suppress("CAST_NEVER_SUCCEEDS", "UNCHECKED_CAST")
+        // kSec* constants are typed CPointer<__CFString>? by cinterop. An `as NSString`
+        // cast compiles (only warns CAST_NEVER_SUCCEEDS) but throws ClassCastException
+        // at runtime, confirmed on real hardware -- interpretObjCPointer is the actual
+        // correct bridge (reinterprets the raw pointer directly as its Kotlin/Native
+        // ObjC wrapper type, rather than attempting an impossible representation cast).
         val attributes = NSMutableDictionary().apply {
-            setObject(kSecAttrKeyTypeRSA as NSString, forKey = kSecAttrKeyType as NSString)
-            setObject(RSA_KEY_SIZE_BITS, forKey = kSecAttrKeySizeInBits as NSString)
+            setObject(
+                interpretObjCPointer<NSString>(kSecAttrKeyTypeRSA!!.rawValue),
+                forKey = interpretObjCPointer<NSString>(kSecAttrKeyType!!.rawValue),
+            )
+            setObject(RSA_KEY_SIZE_BITS, forKey = interpretObjCPointer<NSString>(kSecAttrKeySizeInBits!!.rawValue))
         }
         val keyError = alloc<CFErrorRefVar>()
         @Suppress("UNCHECKED_CAST")

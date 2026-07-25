@@ -1,7 +1,9 @@
 package com.homecontrol.core.crypto
 
+import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.interpretObjCPointer
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
@@ -88,11 +90,16 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
 }
 
 /**
- * kSec* constants are typed `CPointer<__CFString>?` by cinterop, not
- * auto-bridged to `NSString`/`NSCopyingProtocol` despite CFString/NSString
- * being toll-free bridged at the ObjC runtime level — an explicit unchecked
- * cast is required to use them as `NSDictionary` keys/values.
+ * kSec* constants are typed `CPointer<__CFString>?` by cinterop. Despite
+ * CFString/NSString being toll-free bridged at the ObjC runtime level — the
+ * underlying object is genuinely the same memory, just represented by two
+ * different Kotlin static types — an `as NSString` cast does NOT work: it
+ * compiles (the compiler permits it, only warning `CAST_NEVER_SUCCEEDS`,
+ * which is a much more literal warning than it looks — confirmed by an
+ * actual `ClassCastException` at runtime on real hardware) but always
+ * throws. The correct bridge is `interpretObjCPointer`, which reinterprets
+ * the raw pointer value directly as its Kotlin/Native ObjC wrapper type
+ * without going through a (impossible) representation-changing cast.
  */
 @OptIn(ExperimentalForeignApi::class)
-@Suppress("CAST_NEVER_SUCCEEDS", "UNCHECKED_CAST")
-private fun kotlinx.cinterop.CPointer<*>?.asNSString(): NSString = this as NSString
+private fun CPointer<*>?.asNSString(): NSString = interpretObjCPointer(this!!.rawValue)

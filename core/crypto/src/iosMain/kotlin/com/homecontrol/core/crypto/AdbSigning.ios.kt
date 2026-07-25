@@ -4,6 +4,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.convert
+import kotlinx.cinterop.interpretObjCPointer
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.usePinned
@@ -50,13 +51,20 @@ actual fun signAdbAuthToken(token: ByteArray, privateKeyPkcs8: ByteArray): ByteA
     val pkcs1 = pkcs8ToPkcs1(privateKeyPkcs8)
     return memScoped {
         val keyData = pkcs1.toNSData()
-        // kSec* constants are typed CPointer<__CFString>? by cinterop, not auto-bridged
-        // to NSString/NSCopyingProtocol despite CFString/NSString being toll-free bridged
-        // at the ObjC runtime level — an explicit unchecked cast is required.
-        @Suppress("CAST_NEVER_SUCCEEDS", "UNCHECKED_CAST")
+        // kSec* constants are typed CPointer<__CFString>? by cinterop. An `as NSString`
+        // cast compiles (only warns CAST_NEVER_SUCCEEDS) but throws ClassCastException
+        // at runtime, confirmed on real hardware -- interpretObjCPointer is the actual
+        // correct bridge (reinterprets the raw pointer directly as its Kotlin/Native
+        // ObjC wrapper type, rather than attempting an impossible representation cast).
         val attributes = NSMutableDictionary().apply {
-            setObject(kSecAttrKeyTypeRSA as NSString, forKey = kSecAttrKeyType as NSString)
-            setObject(kSecAttrKeyClassPrivate as NSString, forKey = kSecAttrKeyClass as NSString)
+            setObject(
+                interpretObjCPointer<NSString>(kSecAttrKeyTypeRSA!!.rawValue),
+                forKey = interpretObjCPointer<NSString>(kSecAttrKeyType!!.rawValue),
+            )
+            setObject(
+                interpretObjCPointer<NSString>(kSecAttrKeyClassPrivate!!.rawValue),
+                forKey = interpretObjCPointer<NSString>(kSecAttrKeyClass!!.rawValue),
+            )
         }
 
         val keyError = alloc<CFErrorRefVar>()
