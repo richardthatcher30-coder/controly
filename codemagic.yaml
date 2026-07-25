@@ -146,8 +146,12 @@ workflows:
           # separate lookup that could race/diverge) straight out of the
           # embedded provisioning profile.
           BUNDLE_ID=$(xcode-project detect-bundle-id)
-          PROFILE_NAME=$(security cms -D -i "build/ios/xcarchive/iosApp.xcarchive/Products/Applications/iosApp.app/embedded.mobileprovision" | plutil -extract Name raw -o -)
+          PROFILE_NAME=$(security cms -D -i "build/ios/xcarchive/iosApp.xcarchive/Products/Applications/iosApp.app/embedded.mobileprovision" | plutil -extract Name raw -o - -)
           echo "Using provisioning profile: $PROFILE_NAME"
+          if [ -z "$PROFILE_NAME" ]; then
+            echo "Failed to extract provisioning profile name from the archive's embedded.mobileprovision"
+            exit 1
+          fi
 
           cat > /tmp/export_options.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
