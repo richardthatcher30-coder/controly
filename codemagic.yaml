@@ -61,7 +61,26 @@ workflows:
           # That's the actual cause of every "Cannot save/create ... without
           # certificate private key" failure so far, not an account/cert
           # cleanup issue. Generating our own key here and passing it in.
+          #
+          # Also: fetch-signing-files has no certificate-type flag, and for
+          # an IOS_APP_STORE profile it always creates the classic "iOS
+          # Distribution" certificate type — but xcode-project build-ipa
+          # defaults CODE_SIGN_IDENTITY to the newer unified "Apple
+          # Distribution" regardless (and that default can't be overridden
+          # via --archive-xcargs; the tool re-appends its own value after
+          # any override, so the last-wins xcodebuild semantics silently
+          # discard it). So archiving failed with "No iOS Distribution
+          # signing certificate found" even though that exact certificate
+          # existed. Fix is to create the certificate CodeMagic actually
+          # expects ourselves, first, with the type it can't be told to use
+          # here — fetch-signing-files then reuses it instead of creating a
+          # mismatched one, since a DISTRIBUTION cert is valid for
+          # IOS_APP_STORE profiles too.
           openssl genrsa -out /tmp/certificate_key.pem 2048
+          app-store-connect certificates create \
+            --type DISTRIBUTION \
+            --certificate-key @file:/tmp/certificate_key.pem \
+            --save
           app-store-connect fetch-signing-files "$(xcode-project detect-bundle-id)" \
             --type IOS_APP_STORE \
             --certificate-key @file:/tmp/certificate_key.pem \
@@ -71,17 +90,9 @@ workflows:
           xcode-project use-profiles
       - name: Build and archive the app
         script: |
-          # fetch-signing-files has no certificate-type flag — an IOS_APP_STORE
-          # profile always gets created against the classic "iOS Distribution"
-          # certificate type, not the newer unified "Apple Distribution" one.
-          # But build-ipa defaults CODE_SIGN_IDENTITY to "Apple Distribution"
-          # regardless, so archiving failed with "No iOS Distribution signing
-          # certificate found" even though that exact certificate exists.
-          # Overriding it back to match what was actually created.
           xcode-project build-ipa \
             --project "$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME" \
-            --archive-xcargs "CODE_SIGN_IDENTITY=iOS Distribution"
+            --scheme "$XCODE_SCHEME"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
