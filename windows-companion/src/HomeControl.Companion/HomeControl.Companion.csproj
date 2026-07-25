@@ -20,7 +20,7 @@
     <Product>Controly Companion</Product>
     <AssemblyTitle>Controly Companion</AssemblyTitle>
     <Company>Controly</Company>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
