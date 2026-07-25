@@ -104,7 +104,9 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
             return
         }
         pairingState = PairingUiState.InProgress(deviceName)
-        scope.launch(Dispatchers.IO) {
+        // Dispatchers.IO is internal on Kotlin/Native (not part of the public API for
+        // this coroutines version's iOS target) -- Default is the portable choice here.
+        scope.launch(Dispatchers.Default) {
             try {
                 AdbConnection().pair(ip)
                 store.add(

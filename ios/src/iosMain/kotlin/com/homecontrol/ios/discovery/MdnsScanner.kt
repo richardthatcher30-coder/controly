@@ -11,9 +11,8 @@ import platform.Foundation.NSNetService
 import platform.Foundation.NSNetServiceBrowser
 import platform.Foundation.NSNetServiceBrowserDelegateProtocol
 import platform.Foundation.NSNetServiceDelegateProtocol
-import platform.Foundation.NSObject
+import platform.darwin.NSObject
 import platform.posix.AF_INET
-import platform.posix.ntohs
 import platform.posix.sockaddr_in
 
 private const val SERVICE_TYPE = "_googlecast._tcp."
@@ -104,7 +103,7 @@ class MdnsScanner {
             val sockaddrIn = bytes.reinterpret<sockaddr_in>().pointed
             if (sockaddrIn.sin_family.toInt() != AF_INET) continue
             val ip = formatIPv4(sockaddrIn.sin_addr.s_addr)
-            val port = ntohs(sockaddrIn.sin_port).toInt()
+            val port = networkToHostShort(sockaddrIn.sin_port).toInt()
             return ip to port
         }
         return null
@@ -117,6 +116,20 @@ class MdnsScanner {
         val b2 = (addr shr 16) and 0xFFu
         val b3 = (addr shr 24) and 0xFFu
         return "$b0.$b1.$b2.$b3"
+    }
+
+    /**
+     * Manual network-to-host byte swap for a 16-bit value, avoiding a
+     * platform-specific `ntohs` import entirely (its actual package under
+     * Kotlin/Native's Apple bindings wasn't `platform.posix`, and rather
+     * than guess a second time, this is unambiguous: ARM64 iOS devices are
+     * always little-endian, and network byte order is always big-endian, so
+     * swapping the two bytes is correct regardless of which package a
+     * platform `ntohs` binding would live in.
+     */
+    private fun networkToHostShort(value: UShort): UShort {
+        val intValue = value.toInt()
+        return (((intValue and 0xFF) shl 8) or ((intValue shr 8) and 0xFF)).toUShort()
     }
 }
 
