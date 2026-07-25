@@ -40,7 +40,23 @@ internal sealed class ClientSession
 
     public string? DeviceName => _authenticatedClient?.DeviceName;
 
+    public string? AuthenticatedPublicKeyBase64 => _authenticatedClient?.PublicKeyBase64;
+
     public bool IsAuthenticated => _authenticatedClient is not null;
+
+    /// <summary>Unpairing from the Info window should take effect immediately rather than leaving this session able to keep sending commands until it next disconnects on its own.</summary>
+    public async Task DisconnectAsync()
+    {
+        if (_socket.State != WebSocketState.Open) return;
+        try
+        {
+            await _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Unpaired", CancellationToken.None);
+        }
+        catch (WebSocketException)
+        {
+            // Already closing/closed from the other side — nothing more to do.
+        }
+    }
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {

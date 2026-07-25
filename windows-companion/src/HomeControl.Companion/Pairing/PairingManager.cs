@@ -52,6 +52,8 @@ internal sealed class PairingManager
 
     public IReadOnlyList<TrustedClient> GetTrustedClients() => _store.GetAll();
 
+    public void RemoveTrustedClient(string clientPublicKeyBase64) => _store.Remove(clientPublicKeyBase64);
+
     public bool VerifyProof(string clientPublicKeyBase64, byte[] nonce, byte[] proof)
     {
         var sharedSecret = ComputeSharedSecret(clientPublicKeyBase64);

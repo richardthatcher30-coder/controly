@@ -93,5 +93,17 @@ internal sealed class CompanionServer
         _app?.StopAsync().GetAwaiter().GetResult();
     }
 
+    /// <summary>Closes any live session authenticated as this now-untrusted client, so removing a device from the Info window takes effect immediately instead of waiting for it to disconnect on its own.</summary>
+    public void DisconnectClient(string publicKeyBase64)
+    {
+        foreach (var session in _activeSessions.Keys)
+        {
+            if (session.AuthenticatedPublicKeyBase64 == publicKeyBase64)
+            {
+                _ = session.DisconnectAsync();
+            }
+        }
+    }
+
     private void OnSessionStateChanged(object? sender, EventArgs e) => ConnectionsChanged?.Invoke(this, EventArgs.Empty);
 }

@@ -22,13 +22,17 @@ internal sealed class InfoForm : Form
     private static readonly Color MutedText = Color.FromArgb(0x6B, 0x6B, 0x6B);
 
     private readonly CompanionServer _server;
+    private readonly PairingManager _pairingManager;
     private readonly SynchronizationContext _uiContext;
     private readonly Label _statusDot;
     private readonly Label _statusText;
+    private Label _pairedDevicesHeading = null!;
+    private FlowLayoutPanel _pairedDevicesPanel = null!;
 
     public InfoForm(PairingManager pairingManager, CompanionServer server)
     {
         _server = server;
+        _pairingManager = pairingManager;
         _uiContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
         Text = "Controly Companion";
@@ -61,10 +65,19 @@ internal sealed class InfoForm : Form
         contentStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         contentStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         contentStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _pairedDevicesHeading = SectionHeading($"Paired devices ({pairingManager.GetTrustedClients().Count})");
+        _pairedDevicesPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+        };
+        RefreshPairedDevicesPanel();
+
         contentStack.Controls.Add(statusPanel, 0, 0);
         contentStack.Controls.Add(BuildInfoGrid(), 0, 1);
-        contentStack.Controls.Add(SectionHeading($"Paired devices ({pairingManager.GetTrustedClients().Count})"), 0, 2);
-        contentStack.Controls.Add(BuildPairedDevicesPanel(pairingManager), 0, 3);
+        contentStack.Controls.Add(_pairedDevicesHeading, 0, 2);
+        contentStack.Controls.Add(_pairedDevicesPanel, 0, 3);
 
         Controls.Add(contentStack);
         Controls.Add(BuildButtonPanel());
@@ -172,19 +185,15 @@ internal sealed class InfoForm : Form
         Margin = new Padding(0, 8, 0, 6),
     };
 
-    private Control BuildPairedDevicesPanel(PairingManager pairingManager)
+    private void RefreshPairedDevicesPanel()
     {
-        var panel = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-        };
+        _pairedDevicesPanel.SuspendLayout();
+        _pairedDevicesPanel.Controls.Clear();
 
-        var pairedClients = pairingManager.GetTrustedClients();
+        var pairedClients = _pairingManager.GetTrustedClients();
         if (pairedClients.Count == 0)
         {
-            panel.Controls.Add(new Label
+            _pairedDevicesPanel.Controls.Add(new Label
             {
                 Text = "No devices paired yet.",
                 ForeColor = MutedText,
@@ -195,16 +204,51 @@ internal sealed class InfoForm : Form
         {
             foreach (var client in pairedClients.OrderByDescending(c => c.PairedAt))
             {
-                panel.Controls.Add(new Label
-                {
-                    Text = $"{client.DeviceName}  —  paired {client.PairedAt:g}",
-                    AutoSize = true,
-                    Margin = new Padding(0, 0, 0, 4),
-                });
+                _pairedDevicesPanel.Controls.Add(BuildPairedDeviceRow(client));
             }
         }
 
-        return panel;
+        _pairedDevicesPanel.ResumeLayout();
+        _pairedDevicesHeading.Text = $"Paired devices ({pairedClients.Count})";
+    }
+
+    private Control BuildPairedDeviceRow(TrustedClient client)
+    {
+        var row = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 4),
+        };
+
+        row.Controls.Add(new Label
+        {
+            Text = $"{client.DeviceName}  —  paired {client.PairedAt:g}",
+            AutoSize = true,
+            Margin = new Padding(0, 5, 8, 0),
+        });
+
+        var unpairButton = new Button { Text = "Unpair", AutoSize = true };
+        unpairButton.Click += (_, _) => OnUnpairClicked(client);
+        row.Controls.Add(unpairButton);
+
+        return row;
+    }
+
+    private void OnUnpairClicked(TrustedClient client)
+    {
+        var confirm = MessageBox.Show(
+            this,
+            $"Unpair \"{client.DeviceName}\"? It will need to pair again to reconnect.",
+            "Unpair device",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question);
+        if (confirm != DialogResult.Yes) return;
+
+        _pairingManager.RemoveTrustedClient(client.PublicKeyBase64);
+        _server.DisconnectClient(client.PublicKeyBase64);
+        RefreshPairedDevicesPanel();
     }
 
     private Control BuildButtonPanel()

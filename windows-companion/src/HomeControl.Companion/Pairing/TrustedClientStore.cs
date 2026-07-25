@@ -37,6 +37,14 @@ internal sealed class TrustedClientStore
         Save();
     }
 
+    public void Remove(string publicKeyBase64)
+    {
+        if (_clients.TryRemove(publicKeyBase64, out _))
+        {
+            Save();
+        }
+    }
+
     private static List<TrustedClient> Load()
     {
         if (!File.Exists(FilePath)) return [];
