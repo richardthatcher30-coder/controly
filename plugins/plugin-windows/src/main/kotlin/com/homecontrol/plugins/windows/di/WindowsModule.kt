@@ -11,5 +11,5 @@ import org.koin.dsl.module
 val windowsModule = module {
     single { CompanionKeyStore(androidContext(), get()) }
     single { WindowsDeviceStore(androidContext()) }
-    single<IDevicePlugin>(named("windows")) { WindowsPlugin(get(), get()) }
+    single<IDevicePlugin>(named("windows")) { WindowsPlugin(androidContext(), get(), get()) }
 }

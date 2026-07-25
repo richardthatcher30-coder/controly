@@ -1,5 +1,8 @@
 package com.homecontrol.plugins.windows
 
+import android.content.Context
+import android.os.Build
+import android.provider.Settings
 import com.homecontrol.core.model.AppInfo
 import com.homecontrol.core.model.ConnectionResult
 import com.homecontrol.core.model.DeviceCapabilities
@@ -51,6 +54,7 @@ private const val WAKE_ON_LAN_PORT = 9
  * restart/sleep too.
  */
 class WindowsPlugin(
+    private val context: Context,
     private val keyStore: CompanionKeyStore,
     private val deviceStore: WindowsDeviceStore,
 ) : IDevicePlugin {
@@ -82,7 +86,7 @@ class WindowsPlugin(
                     pinnedFingerprint = null,
                 )
 
-                val approved = session.pair(deviceName = "Controly")
+                val approved = session.pair(deviceName = localDeviceName())
                 if (!approved) {
                     session.close()
                     return@withContext PairingResult.Failed(PairingFailureReason.REJECTED_BY_DEVICE)
@@ -256,6 +260,13 @@ class WindowsPlugin(
     override suspend fun triggerQuickAction(device: PairedDevice, actionId: String) {
         sendCommand(device, "trigger_quick_action", buildJsonObject { put("actionId", JsonPrimitive(actionId)) })
     }
+
+    /** The user-assigned name shown in the phone's own Bluetooth/Wi-Fi Direct settings (e.g. "Richard's Phone") when set, since that's the name the user actually recognizes — falling back to the bare model name ("Pixel 8") for the rare device that's never had it customized. */
+    private fun localDeviceName(): String =
+        runCatching { Settings.Global.getString(context.contentResolver, "device_name") }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: Build.MODEL
 
     private fun capabilities() = DeviceCapabilities(
         // Power on/off deliberately hidden for now — not wanted in the UI yet.
