@@ -83,17 +83,27 @@ workflows:
             openssl genrsa -out /tmp/certificate_key.pem 2048
             cp /tmp/certificate_key.pem "$CM_BUILD_DIR/certificate_key_ADD_TO_ios_release_GROUP.pem"
           fi
-          # No --certificate-type flag exists here (confirmed against the
-          # docs) — for an IOS_APP_STORE profile this always creates/uses
-          # the classic "iOS Distribution" certificate type, confirmed
-          # across multiple real runs (a separately-created unified
-          # "Apple Distribution" cert was never picked up for this profile
-          # type, even with a matching persisted key). See the archive step
-          # below for why that matters.
+          # fetch-signing-files only ever writes files to disk (default
+          # --certificates-dir: $HOME/Library/Developer/Xcode/UserData/
+          # Certificates) — confirmed it does NOT import anything into a
+          # keychain itself. xcodebuild archive with manual signing needs
+          # the identity to actually be IN a keychain (`security
+          # find-identity` found nothing at all, even after a fully
+          # successful fetch), so generate a p12 here (--p12-password) and
+          # explicitly import it below via the keychain commands, which is
+          # the piece that was missing this whole time — not a certificate
+          # *type* mismatch as earlier attempts assumed.
+          P12_PASSWORD=$(openssl rand -hex 16)
           app-store-connect fetch-signing-files "$(xcode-project detect-bundle-id)" \
             --type IOS_APP_STORE \
             --certificate-key @file:/tmp/certificate_key.pem \
+            --p12-password "$P12_PASSWORD" \
             --create
+          keychain initialize
+          keychain add-certificates \
+            -c "$HOME/Library/Developer/Xcode/UserData/Certificates/*.p12" \
+            --certificate-password "$P12_PASSWORD" \
+            -A
       - name: Use signing files
         script: |
           xcode-project use-profiles
