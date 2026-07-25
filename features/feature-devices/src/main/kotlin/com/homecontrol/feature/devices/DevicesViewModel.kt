@@ -122,24 +122,27 @@ class DevicesViewModel(
      * themselves. This bypasses discovery entirely: the user already knows
      * the IP and device type, so there's nothing left to detect.
      */
-    fun addManualDevice(name: String, ipAddress: String, deviceType: DeviceType) {
-        pairDevice(
-            DiscoveredDevice(
-                discoveryId = "manual:$ipAddress",
-                name = name.ifBlank { deviceType.name },
-                ipAddress = ipAddress,
-                deviceTypeHint = deviceType,
-                discoveryProtocol = DiscoveryProtocol.MANUAL,
-            ),
+    fun addManualDevice(name: String, ipAddress: String, deviceType: DeviceType, presharedKey: String? = null) {
+        val device = DiscoveredDevice(
+            discoveryId = "manual:$ipAddress",
+            name = name.ifBlank { deviceType.name },
+            ipAddress = ipAddress,
+            deviceTypeHint = deviceType,
+            discoveryProtocol = DiscoveryProtocol.MANUAL,
         )
+        // A pre-shared key (currently only meaningful for Sony TVs, see
+        // SonyTvPlugin) skips the on-screen PIN dance entirely — the key is
+        // itself the credential, verified directly against the device.
+        val input = presharedKey?.let { PairingInput.Psk(it) } ?: PairingInput.None
+        pairDevice(device, input)
     }
 
-    fun pairDevice(device: DiscoveredDevice) {
+    fun pairDevice(device: DiscoveredDevice, input: PairingInput = PairingInput.None) {
         pendingDevice = device
         _uiState.update { it.copy(pairingState = PairingUiState.InProgress(device.name)) }
 
         viewModelScope.launch {
-            applyPairingResult(device, pairedDeviceRepository.pair(device, PairingInput.None))
+            applyPairingResult(device, pairedDeviceRepository.pair(device, input))
         }
     }
 

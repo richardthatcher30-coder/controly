@@ -39,7 +39,14 @@ private data class PendingRegistration(val client: SonyApiClient, val clientId: 
  * that PIN back into the app, which becomes the second `actRegister` call.
  * Reconnecting after an app restart replays `actRegister` with the same
  * `clientid` (persisted via [SonyDeviceStore]) — Sony's trust model is
- * keyed by that id, so the TV recognizes it immediately with no new PIN.
+ * supposed to be keyed by that id, recognizing it immediately with no new
+ * PIN. In practice, some Bravia firmware doesn't persist that trust
+ * reliably and re-prompts for approval on every reconnect regardless. For
+ * that case, pairing also accepts [PairingInput.Psk] — a pre-shared key set
+ * directly in the TV's own IP Control settings — sent as an `X-Auth-PSK`
+ * header on every request instead of using `actRegister` at all, which
+ * sidesteps that flakiness entirely since there's no per-app trust state to
+ * expire or forget.
  *
  * Input switching (HDMI 1/2/3/4, etc.) goes through [getSources]/[selectSource]
  * — Sony's `avContent` service (`getCurrentExternalInputsStatus` /
@@ -87,6 +94,7 @@ class SonyTvPlugin(
             when (input) {
                 PairingInput.None -> beginPairing(discovered)
                 is PairingInput.Code -> completePairing(discovered, input.code)
+                is PairingInput.Psk -> pairWithPsk(discovered, input.key)
             }
         }
 
@@ -123,6 +131,23 @@ class SonyTvPlugin(
         }
     }
 
+    // Verifies the key actually works before saving it — a typo shows up as
+    // a clear pairing failure here instead of silently failing on the first
+    // real connect. No actRegister call at all: the PSK authenticates every
+    // request by itself, so there's nothing to register.
+    private fun pairWithPsk(discovered: DiscoveredDevice, psk: String): PairingResult {
+        val client = SonyApiClient(discovered.ipAddress, psk = psk)
+        val codes = client.getRemoteControllerCodes()
+            ?: return PairingResult.Failed(
+                PairingFailureReason.INVALID_CODE,
+                "Couldn't verify the pre-shared key — check it matches the TV's IP Control settings, and that the TV is reachable.",
+            )
+        clients[discovered.ipAddress] = client
+        deviceStore.save(SonyDeviceRecord(discovered.ipAddress, psk = psk))
+        remoteCodes[discovered.ipAddress] = codes
+        return PairingResult.Success(discovered.toPairedDevice())
+    }
+
     private fun onRegistered(ipAddress: String, clientId: String, client: SonyApiClient) {
         clients[ipAddress] = client
         deviceStore.save(SonyDeviceRecord(ipAddress, clientId))
@@ -149,10 +174,27 @@ class SonyTvPlugin(
         }
 
         val record = deviceStore.find(device.ipAddress) ?: return@withContext ConnectionResult.PairingRequired
+
+        val psk = record.psk
+        if (psk != null) {
+            // No actRegister call — the PSK authenticates every request on
+            // its own, so there's no cookie/trust-list state to go stale.
+            val client = SonyApiClient(device.ipAddress, psk = psk)
+            val codes = client.getRemoteControllerCodes()
+            return@withContext if (codes != null) {
+                clients[device.ipAddress] = client
+                remoteCodes[device.ipAddress] = codes
+                ConnectionResult.Connected
+            } else {
+                ConnectionResult.Failed("Couldn't reconnect to ${device.name}")
+            }
+        }
+
+        val clientId = record.clientId ?: return@withContext ConnectionResult.PairingRequired
         val client = SonyApiClient(device.ipAddress)
-        when (client.beginRegistration(record.clientId)) {
+        when (client.beginRegistration(clientId)) {
             RegistrationOutcome.Registered -> {
-                onRegistered(device.ipAddress, record.clientId, client)
+                onRegistered(device.ipAddress, clientId, client)
                 ConnectionResult.Connected
             }
             // The TV no longer recognizes this clientid (e.g. it was reset

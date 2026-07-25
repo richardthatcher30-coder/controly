@@ -20,6 +20,9 @@ enum class PairingStrategy {
 /** What the pairing UI collected from the user, matching [PairingStrategy]. */
 sealed interface PairingInput {
     data class Code(val code: String) : PairingInput
+
+    /** A credential configured directly on the device itself rather than exchanged during pairing — e.g. Sony Bravia's IP Control pre-shared key. */
+    data class Psk(val key: String) : PairingInput
     data object None : PairingInput
 }
 

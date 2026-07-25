@@ -91,7 +91,7 @@ fun DevicesScreen(
             DevicesList(
                 devices = uiState.discoveredDevices,
                 paddingValues = paddingValues,
-                onDeviceClick = viewModel::pairDevice,
+                onDeviceClick = { device -> viewModel.pairDevice(device) },
             )
         }
     }
@@ -107,8 +107,8 @@ fun DevicesScreen(
     if (showManualAddDialog) {
         ManualAddDeviceDialog(
             onDismiss = { showManualAddDialog = false },
-            onConfirm = { name, ip, deviceType ->
-                viewModel.addManualDevice(name, ip, deviceType)
+            onConfirm = { name, ip, deviceType, presharedKey ->
+                viewModel.addManualDevice(name, ip, deviceType, presharedKey)
                 showManualAddDialog = false
             },
         )
@@ -255,12 +255,13 @@ private val WINDOWS_PC_OPTION = MANUAL_DEVICE_TYPE_OPTIONS.first { it.second == 
 @Composable
 private fun ManualAddDeviceDialog(
     onDismiss: () -> Unit,
-    onConfirm: (name: String, ipAddress: String, deviceType: DeviceType) -> Unit,
+    onConfirm: (name: String, ipAddress: String, deviceType: DeviceType, presharedKey: String?) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var ipAddress by remember { mutableStateOf("") }
     var isWindowsPc by remember { mutableStateOf(false) }
     var tvBrand by remember { mutableStateOf(TV_BRAND_OPTIONS.first().second) }
+    var presharedKey by remember { mutableStateOf("") }
     val deviceType = if (isWindowsPc) WINDOWS_PC_OPTION.second else tvBrand
 
     AlertDialog(
@@ -310,6 +311,21 @@ private fun ManualAddDeviceDialog(
                                 Text(text = label, modifier = Modifier.padding(start = 8.dp))
                             }
                         }
+                        if (tvBrand == DeviceType.SONY_TV) {
+                            OutlinedTextField(
+                                value = presharedKey,
+                                onValueChange = { presharedKey = it },
+                                label = { Text("Pre-shared key (optional)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Text(
+                                text = "Only needed if the TV keeps asking to re-approve pairing. Set a key on the TV under " +
+                                    "Settings → Network → Home Network → IP Control Authentication, then enter the same key here.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -317,7 +333,7 @@ private fun ManualAddDeviceDialog(
         confirmButton = {
             TextButton(
                 enabled = ipAddress.isNotBlank(),
-                onClick = { onConfirm(name.trim(), ipAddress.trim(), deviceType) },
+                onClick = { onConfirm(name.trim(), ipAddress.trim(), deviceType, presharedKey.trim().ifBlank { null }) },
             ) { Text("Add") }
         },
         dismissButton = {

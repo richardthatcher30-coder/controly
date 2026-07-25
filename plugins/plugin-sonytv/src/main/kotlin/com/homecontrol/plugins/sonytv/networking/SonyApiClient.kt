@@ -38,7 +38,7 @@ internal sealed interface RegistrationOutcome {
  * device, because Sony layered the newer JSON API on top of an older one
  * rather than replacing it.
  */
-internal class SonyApiClient(private val ipAddress: String) {
+internal class SonyApiClient(private val ipAddress: String, private val psk: String? = null) {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -124,7 +124,11 @@ internal class SonyApiClient(private val ipAddress: String) {
         val requestBuilder = Request.Builder()
             .url("http://$ipAddress/sony/$service")
             .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
-        authCookie?.let { requestBuilder.header("Cookie", it) }
+        if (psk != null) {
+            requestBuilder.header("X-Auth-PSK", psk)
+        } else {
+            authCookie?.let { requestBuilder.header("Cookie", it) }
+        }
 
         return runCatching {
             client.newCall(requestBuilder.build()).execute().use { response ->
@@ -192,7 +196,11 @@ internal class SonyApiClient(private val ipAddress: String) {
             .url("http://$ipAddress/sony/IRCC")
             .header("SOAPACTION", "\"urn:schemas-sony-com:service:IRCC:1#X_SendIRCC\"")
             .post(soapBody.toRequestBody(XML_MEDIA_TYPE))
-        authCookie?.let { requestBuilder.header("Cookie", it) }
+        if (psk != null) {
+            requestBuilder.header("X-Auth-PSK", psk)
+        } else {
+            authCookie?.let { requestBuilder.header("Cookie", it) }
+        }
 
         runCatching { client.newCall(requestBuilder.build()).execute().close() }
     }
