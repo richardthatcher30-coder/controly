@@ -139,6 +139,16 @@ workflows:
             CODE_SIGN_IDENTITY="$CERT_IDENTITY" \
             DEVELOPMENT_TEAM=PVL8GCZUC3
 
+          # -exportArchive with signingStyle=manual refuses to guess which
+          # profile to use, even though the archive already has one embedded
+          # -- it has to be spelled out explicitly. Pull the exact profile
+          # Xcode just signed the archive with (guaranteed match, no
+          # separate lookup that could race/diverge) straight out of the
+          # embedded provisioning profile.
+          BUNDLE_ID=$(xcode-project detect-bundle-id)
+          PROFILE_NAME=$(security cms -D -i "build/ios/xcarchive/iosApp.xcarchive/Products/Applications/iosApp.app/embedded.mobileprovision" | plutil -extract Name raw -o -)
+          echo "Using provisioning profile: $PROFILE_NAME"
+
           cat > /tmp/export_options.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -152,6 +162,11 @@ workflows:
             <string>manual</string>
             <key>signingCertificate</key>
             <string>$CERT_IDENTITY</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
             <key>destination</key>
             <string>export</string>
           </dict>
