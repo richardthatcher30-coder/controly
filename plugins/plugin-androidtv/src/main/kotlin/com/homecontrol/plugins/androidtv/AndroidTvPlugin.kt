@@ -25,6 +25,17 @@ import java.util.concurrent.ConcurrentHashMap
 private const val PLUGIN_ID = "androidtv"
 private val SONY_MODEL_PREFIXES = listOf("kd-", "kdl-", "xr-", "xbr-")
 
+// Brands confirmed to ship real Android TV/Google TV OS models (at least
+// some of their range) in the UK/EU market — not a claim every set from
+// these brands runs it, just that when one does, it speaks the exact same
+// ADB-over-TCP protocol this plugin already handles, no separate plugin
+// needed. Panasonic (own "My Home Screen" OS) and LG (webOS) are
+// deliberately NOT here — genuinely different platforms, would need their
+// own plugin and protocol, not just a name match.
+private val KNOWN_ANDROID_TV_BRANDS = listOf(
+    "hisense", "philips", "tcl", "sharp", "toshiba", "jvc", "grundig", "hitachi", "bush",
+)
+
 /**
  * Android TV / Google TV, controlled over classic ADB-over-TCP (port 5555).
  * Pairing is [PairingStrategy.ON_SCREEN_APPROVAL] — the device shows its own
@@ -81,7 +92,13 @@ class AndroidTvPlugin(
             // feature-devices' "Add by IP" flow), never real network traffic.
             nameAndModel.contains("fire tv") ||
             nameAndModel.contains("firetv") ||
-            nameAndModel.contains("amazon fire")
+            nameAndModel.contains("amazon fire") ||
+            // Belt-and-braces for the other Android TV OS-licensing brands:
+            // a genuinely certified device already matches above via the
+            // brand-agnostic androidtvremote/"android tv"/"google tv"
+            // checks, so this only matters as a fallback for devices whose
+            // advertised name/model leads with the brand instead.
+            KNOWN_ANDROID_TV_BRANDS.any { nameAndModel.contains(it) }
     }
 
     override suspend fun pair(discovered: DiscoveredDevice, input: PairingInput): PairingResult =
@@ -91,12 +108,13 @@ class AndroidTvPlugin(
                 connections[discovered.ipAddress] = connection
 
                 val deviceType = discovered.deviceTypeHint.takeIf { it in supportedDeviceTypes } ?: DeviceType.ANDROID_TV
+                val brand = brandFromName(discovered)
                 PairingResult.Success(
                     PairedDevice(
                         id = "$PLUGIN_ID:${discovered.ipAddress}",
                         name = discovered.name,
-                        manufacturer = discovered.manufacturer ?: defaultManufacturer(deviceType),
-                        model = discovered.model ?: defaultModel(deviceType),
+                        manufacturer = discovered.manufacturer ?: brand?.manufacturer ?: defaultManufacturer(deviceType),
+                        model = discovered.model ?: brand?.model ?: defaultModel(deviceType),
                         ipAddress = discovered.ipAddress,
                         macAddress = discovered.macAddress,
                         deviceType = deviceType,
@@ -208,6 +226,26 @@ class AndroidTvPlugin(
     private fun defaultModel(deviceType: DeviceType): String = when (deviceType) {
         DeviceType.FIRE_TV -> "Fire TV"
         else -> "Android TV"
+    }
+
+    private data class BrandLabel(val manufacturer: String, val model: String)
+
+    /**
+     * Best-effort manufacturer/model from the device's own name/model text —
+     * real network discovery usually already supplies both from mDNS TXT
+     * records, so this only actually matters for manually-added devices
+     * (see feature-devices' "Add by IP" flow), which otherwise fall all the
+     * way through to the generic "Unknown"/"Android TV" defaults even when
+     * the user typed e.g. "Hisense" right there in the device name.
+     */
+    private fun brandFromName(discovered: DiscoveredDevice): BrandLabel? {
+        val nameAndModel = "${discovered.name} ${discovered.model.orEmpty()}".lowercase()
+        val brand = KNOWN_ANDROID_TV_BRANDS.firstOrNull { nameAndModel.contains(it) } ?: return null
+        val manufacturer = when (brand) {
+            "jvc", "tcl" -> brand.uppercase()
+            else -> brand.replaceFirstChar { it.uppercase() }
+        }
+        return BrandLabel(manufacturer = manufacturer, model = "Android TV")
     }
 
     private fun capabilities() = DeviceCapabilities(
