@@ -24,7 +24,9 @@ import platform.posix.SOL_SOCKET
 import platform.posix.SO_BROADCAST
 import platform.posix.SO_RCVTIMEO
 import platform.posix.close
+import platform.posix.connect
 import platform.posix.errno
+import platform.posix.getsockname
 import platform.posix.recvfrom
 import platform.posix.sendto
 import platform.posix.setsockopt
@@ -68,17 +70,24 @@ sealed interface UdpScanResult {
  * failure at socket/setsockopt/sendto would look identical to "no devices
  * on the network"). That surfaced a real bug: sending to the global
  * broadcast address 255.255.255.255 (what Android's own implementation
- * uses, and what this file does too) fails on iOS with `EHOSTUNREACH` ("No
+ * uses, and what this file did too) fails on iOS with `EHOSTUNREACH` ("No
  * route to host") — a well-known iOS/BSD quirk absent on Android. The
- * correct fix is to enumerate network interfaces (`getifaddrs`) and send to
- * the active Wi-Fi interface's own subnet-directed broadcast address (e.g.
- * 192.168.1.255) instead, which iOS does route correctly — attempted once,
- * but `getifaddrs`/`freeifaddrs`/`ifaddrs` turned out not to exist under
- * `platform.posix` at all for this Kotlin/Native target (a full
- * "unresolved reference" cascade, not just a wrong-package guess), so
- * that's reverted here pending a working import path. Windows PC
- * auto-discovery is consequently still broken pending that fix; it isn't
- * silent anymore, at least — [UdpScanResult.Failed] surfaces exactly why.
+ * correct fix is to send to the active interface's own subnet-directed
+ * broadcast address (e.g. 192.168.0.255) instead, which iOS does route
+ * correctly. The textbook way to find that is enumerating network
+ * interfaces via `getifaddrs` -- confirmed unavailable under
+ * `platform.posix` for this Kotlin/Native target (a full "unresolved
+ * reference" cascade, not just a wrong-package guess). [findLocalIPv4Address]
+ * sidesteps that entirely: a UDP `connect()` to an arbitrary internet
+ * address sends no packets (UDP is connectionless -- `connect()` on a
+ * datagram socket only records a peer for the kernel's routing lookup), but
+ * afterward `getsockname()` reports which local address the kernel would
+ * route through, i.e. this device's real LAN IP. From there, every home/
+ * office network this app targets is a /24, so forcing the last octet to
+ * 255 gives the correct subnet broadcast address without needing interface
+ * enumeration at all. Falls back to the old global broadcast address (still
+ * broken, but no worse than before) if that lookup itself fails for any
+ * reason.
  *
  * Blocking — call off the main thread. Pairing with a device found this way
  * isn't implemented on iOS yet (only ADB-based Android TV/Fire TV/Google TV
@@ -105,14 +114,15 @@ fun scanForWindowsPcs(onDeviceFound: (DiscoveredDevice) -> Unit): UdpScanResult 
                 return errnoFailure("setsockopt(SO_RCVTIMEO)")
             }
 
-            // Known broken on iOS (EHOSTUNREACH) -- see the class doc comment. Reverted to
-            // this rather than block the higher-priority pairing fix behind a second
-            // unrelated compile failure; Windows PC discovery stays non-functional but the
-            // failure is at least visible via UdpScanResult.Failed instead of silent.
+            // The global broadcast address (255.255.255.255) fails on iOS with
+            // EHOSTUNREACH -- see the class doc comment. findLocalIPv4Address() +
+            // toSubnetBroadcast() derive this device's own subnet-directed broadcast
+            // address instead (e.g. 192.168.0.255), which iOS does route.
+            val broadcastAddr = findLocalIPv4Address()?.toSubnetBroadcast() ?: 0xFFFFFFFFu
             val destAddr = alloc<sockaddr_in>().apply {
                 sin_family = AF_INET.convert()
                 sin_port = hostToNetworkShort(UDP_BROADCAST_PORT)
-                sin_addr.s_addr = 0xFFFFFFFFu
+                sin_addr.s_addr = broadcastAddr
             }
             val message = UDP_DISCOVER_MESSAGE.encodeToByteArray()
             val sent = message.usePinned { pinned ->
@@ -172,6 +182,35 @@ fun scanForWindowsPcs(onDeviceFound: (DiscoveredDevice) -> Unit): UdpScanResult 
         close(fd)
     }
 }
+
+/**
+ * This device's own LAN IPv4 address, or null if it couldn't be determined.
+ * See the class doc comment for why this (a UDP `connect()` + `getsockname()`)
+ * instead of the textbook `getifaddrs()` interface enumeration.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun findLocalIPv4Address(): UInt? = memScoped {
+    val fd = socket(AF_INET, SOCK_DGRAM, 0)
+    if (fd < 0) return@memScoped null
+    try {
+        val remote = alloc<sockaddr_in>().apply {
+            sin_family = AF_INET.convert()
+            sin_port = hostToNetworkShort(53)
+            sin_addr.s_addr = 0x08080808u // 8.8.8.8 -- arbitrary, never actually contacted by a UDP connect()
+        }
+        if (connect(fd, remote.ptr.reinterpret<sockaddr>(), sizeOf<sockaddr_in>().convert()) != 0) return@memScoped null
+
+        val local = alloc<sockaddr_in>()
+        val localLen = alloc<UIntVar>().apply { value = sizeOf<sockaddr_in>().convert() }
+        if (getsockname(fd, local.ptr.reinterpret<sockaddr>(), localLen.ptr) != 0) return@memScoped null
+        local.sin_addr.s_addr
+    } finally {
+        close(fd)
+    }
+}
+
+/** Assumes a /24 subnet (true for the vast majority of home/office LANs this app targets) -- forces the host octet to 255. */
+private fun UInt.toSubnetBroadcast(): UInt = (this and 0x00FFFFFFu) or 0xFF000000u
 
 @OptIn(ExperimentalForeignApi::class)
 private fun errnoFailure(step: String, errnoValue: Int = errno): UdpScanResult.Failed =
