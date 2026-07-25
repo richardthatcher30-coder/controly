@@ -8,9 +8,11 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
 import platform.CoreFoundation.CFTypeRefVar
+import platform.CoreFoundation.kCFBooleanTrue
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.NSData
 import platform.Foundation.NSMutableDictionary
+import platform.Foundation.NSNumber
 import platform.Foundation.NSString
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
@@ -78,7 +80,13 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
             setObject(kSecClassGenericPassword.asNSString(), forKey = kSecClass.asNSString())
             setObject(SERVICE_NAME, forKey = kSecAttrService.asNSString())
             setObject(alias, forKey = kSecAttrAccount.asNSString())
-            setObject(true, forKey = kSecReturnData.asNSString())
+            // A raw Kotlin `true` here compiles (setObject takes `Any`) but produced
+            // errSecParam (-50) from SecItemCopyMatching on real hardware -- Security
+            // framework's CFDictionary-based APIs want an actual CFBooleanRef, not
+            // whatever NSNumber boxing Kotlin's implicit id-bridging happened to
+            // produce. kCFBooleanTrue via the same interpretObjCPointer bridge used
+            // for every other CF constant in this file is the correct value.
+            setObject(interpretObjCPointer<NSNumber>(kCFBooleanTrue!!.rawValue), forKey = kSecReturnData.asNSString())
             setObject(kSecMatchLimitOne.asNSString(), forKey = kSecMatchLimit.asNSString())
         }
         val result = alloc<CFTypeRefVar>()
