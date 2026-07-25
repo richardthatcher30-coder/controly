@@ -7,10 +7,14 @@ import kotlinx.cinterop.convert
 import kotlinx.cinterop.interpretObjCPointer
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
+import platform.CoreFoundation.CFDataRef
+import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFErrorRefVar
 import platform.CoreFoundation.CFRelease
 import platform.Foundation.CFBridgingRelease
+import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.NSMutableDictionary
 import platform.Foundation.NSString
@@ -38,12 +42,18 @@ import platform.posix.memcpy
  * actual — required because the ADB auth token itself is what gets signed,
  * not a hash of it.
  *
- * Two real-hardware bugs already found and fixed here: kSec* constants need
- * `interpretObjCPointer`, not `as NSString` (compiles, throws at runtime);
- * and `SecKeyCreateWithData`/`SecKeyCreateSignature`'s CFDataRef/CFDictionaryRef
- * parameters take the NSData/NSDictionary objects directly with no cast at
- * all (an `as CFDataRef`/`as CFDictionaryRef` cast also compiles, also
- * throws at runtime). Still unverified: whether the actual RSA signature
+ * Three real-hardware/real-compiler bugs already found and fixed here around
+ * NS<->CF bridging: (1) kSec* constants need `interpretObjCPointer`, not
+ * `as NSString` (compiles, throws ClassCastException at runtime); (2) an
+ * `as CFDataRef`/`as CFDictionaryRef` cast on NSData/NSMutableDictionary
+ * also compiles, also throws at runtime ("NSDictionaryAsKMap cannot be cast
+ * to CPointer"); (3) removing the cast entirely doesn't compile at all —
+ * the compiler confirms `CPointer<__CFData>?`/`CPointer<__CFDictionary>?`
+ * really is required, contradicting the assumption behind fix (2). The
+ * actual correct bridge for NSObject -> CF (the reverse of
+ * `interpretObjCPointer`) is `CFBridgingRetain`, Apple/Kotlin-Native's own
+ * documented function for exactly this direction — see [asCFDataRef]/
+ * [asCFDictionaryRef]. Still unverified: whether the actual RSA signature
  * produced is byte-for-byte correct — that only shows up as the TV either
  * accepting or rejecting the pairing key, not as a crash.
  */
@@ -68,22 +78,20 @@ actual fun signAdbAuthToken(token: ByteArray, privateKeyPkcs8: ByteArray): ByteA
             )
         }
 
+        val keyDataRef = keyData.asCFDataRef()
+        val attributesRef = attributes.asCFDictionaryRef()
         val keyError = alloc<CFErrorRefVar>()
-        // SecKeyCreateWithData's CFDataRef/CFDictionaryRef parameters are toll-free
-        // bridged to NSData/NSDictionary in the underlying header, and Kotlin/Native's
-        // cinterop accepts the Foundation objects directly here -- no cast needed (an
-        // `as CFDataRef`/`as CFDictionaryRef` cast was tried first and confirmed broken
-        // at runtime on real hardware: "NSDictionaryAsKMap cannot be cast to CPointer").
-        val secKey = SecKeyCreateWithData(keyData, attributes, keyError.ptr)
+        val secKey = SecKeyCreateWithData(keyDataRef, attributesRef, keyError.ptr)
             ?: error("Failed to import ADB RSA private key into Security framework")
 
         try {
             val tokenData = token.toNSData()
+            val tokenDataRef = tokenData.asCFDataRef()
             val sigError = alloc<CFErrorRefVar>()
             val signature = SecKeyCreateSignature(
                 secKey,
                 kSecKeyAlgorithmRSASignatureDigestPKCS1v15Raw,
-                tokenData,
+                tokenDataRef,
                 sigError.ptr,
             ) ?: error("Failed to sign ADB auth token")
 
@@ -93,6 +101,23 @@ actual fun signAdbAuthToken(token: ByteArray, privateKeyPkcs8: ByteArray): ByteA
         }
     }
 }
+
+/**
+ * Bridges an NSData/NSMutableDictionary to its toll-free-bridged CF pointer
+ * type via `CFBridgingRetain` — the correct, Apple/Kotlin-Native-documented
+ * direction-reverse of `CFBridgingRelease` (already used above for the CF ->
+ * NS direction). Deliberately not balanced with a matching `CFRelease` here:
+ * these are short-lived, low-frequency call sites (pairing happens once per
+ * device, key generation happens once ever), so the one-retain-per-call
+ * cost is an acceptable tradeoff against the complexity of threading
+ * try/finally release scoping through every caller for what would be a
+ * tiny, bounded leak in practice, not an unbounded one.
+ */
+@OptIn(ExperimentalForeignApi::class)
+fun NSData.asCFDataRef(): CFDataRef = CFBridgingRetain(this)!!.reinterpret()
+
+@OptIn(ExperimentalForeignApi::class)
+fun NSMutableDictionary.asCFDictionaryRef(): CFDictionaryRef = CFBridgingRetain(this)!!.reinterpret()
 
 /** Public (not internal) so other modules depending on this one — e.g. `ios`'s ADB keypair generation — can reuse the same bridging helpers. */
 @OptIn(ExperimentalForeignApi::class)

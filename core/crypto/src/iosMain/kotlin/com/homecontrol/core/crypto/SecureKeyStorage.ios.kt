@@ -39,11 +39,12 @@ private const val SERVICE_NAME = "com.controly.securekeystorage"
  * this platform; every alias lives under one fixed Keychain service name
  * instead.
  *
- * See `AdbSigning.ios.kt`'s doc comment — the same two real-hardware bridging
- * bugs (kSec* constants needing `interpretObjCPointer`, and `SecItemAdd`/etc.
- * accepting `NSDictionary` directly with no `as CFDictionaryRef` cast) were
- * found and fixed here first, on this class, and then found again in the
- * other file.
+ * See `AdbSigning.ios.kt`'s doc comment for the full story — three rounds of
+ * NS<->CF bridging bugs found via real-hardware testing. `SecItemAdd`/
+ * `SecItemCopyMatching`/`SecItemDelete`'s `CFDictionaryRef` parameter needs
+ * [asCFDictionaryRef] (`CFBridgingRetain` + reinterpret) — neither an
+ * `as CFDictionaryRef` cast (compiles, throws at runtime) nor passing the
+ * `NSMutableDictionary` with no conversion at all (doesn't compile) works.
  */
 @OptIn(ExperimentalForeignApi::class)
 actual class SecureKeyStorage actual constructor(storageDir: String) {
@@ -57,11 +58,7 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
             setObject(bytes.toNSData(), forKey = kSecValueData.asNSString())
             setObject(kSecAttrAccessibleWhenUnlockedThisDeviceOnly.asNSString(), forKey = kSecAttrAccessible.asNSString())
         }
-        // No cast to CFDictionaryRef here -- SecItemAdd's parameter is toll-free
-        // bridged to NSDictionary and Kotlin/Native accepts the Foundation object
-        // directly; an `as CFDictionaryRef` cast was tried first and confirmed
-        // broken at runtime on real hardware.
-        val status = SecItemAdd(query, null)
+        val status = SecItemAdd(query.asCFDictionaryRef(), null)
         check(status == errSecSuccess) { "Keychain SecItemAdd failed with OSStatus $status" }
     }
 
@@ -74,7 +71,7 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
             setObject(kSecMatchLimitOne.asNSString(), forKey = kSecMatchLimit.asNSString())
         }
         val result = alloc<CFTypeRefVar>()
-        val status = SecItemCopyMatching(query, result.ptr)
+        val status = SecItemCopyMatching(query.asCFDictionaryRef(), result.ptr)
         if (status != errSecSuccess) return@memScoped null
         (CFBridgingRelease(result.value) as? NSData)?.toByteArray()
     }
@@ -85,7 +82,7 @@ actual class SecureKeyStorage actual constructor(storageDir: String) {
             setObject(SERVICE_NAME, forKey = kSecAttrService.asNSString())
             setObject(alias, forKey = kSecAttrAccount.asNSString())
         }
-        SecItemDelete(query)
+        SecItemDelete(query.asCFDictionaryRef())
         // Return status intentionally ignored — errSecItemNotFound is an expected, benign outcome here.
     }
 }

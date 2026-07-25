@@ -1,6 +1,7 @@
 package com.homecontrol.ios.adb
 
 import com.homecontrol.core.crypto.SecureKeyStorage
+import com.homecontrol.core.crypto.asCFDictionaryRef
 import com.homecontrol.core.crypto.pkcs1ToPkcs8
 import com.homecontrol.core.crypto.toByteArray
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -57,10 +58,10 @@ class AdbKeyStore(private val secureKeyStorage: SecureKeyStorage = SecureKeyStor
             setObject(RSA_KEY_SIZE_BITS, forKey = interpretObjCPointer<NSString>(kSecAttrKeySizeInBits!!.rawValue))
         }
         val keyError = alloc<CFErrorRefVar>()
-        // No cast to CFDictionaryRef here -- see AdbSigning.ios.kt's comment on the
-        // same pattern: the parameter is toll-free bridged to NSDictionary, and
-        // Kotlin/Native accepts the Foundation object directly.
-        val secKey = SecKeyCreateRandomKey(attributes, keyError.ptr)
+        // See core:crypto's AdbSigning.ios.kt doc comment: asCFDictionaryRef()
+        // (CFBridgingRetain + reinterpret) is the only approach that both compiles
+        // and works at runtime for this NSDictionary -> CFDictionaryRef direction.
+        val secKey = SecKeyCreateRandomKey(attributes.asCFDictionaryRef(), keyError.ptr)
             ?: error("Failed to generate ADB RSA identity key")
 
         val exportError = alloc<CFErrorRefVar>()
