@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.homecontrol.core.model.RemoteKey
 import com.homecontrol.ios.adb.AdbConnection
+import com.homecontrol.ios.adb.KeyOrigin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -106,6 +107,17 @@ fun RemoteScreen(deviceName: String, ipAddress: String, onBack: () -> Unit) {
                 Text(text = "Couldn't connect", style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(text = state.message, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+                connection.lastKeyOrigin?.let { origin ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = when (origin) {
+                            KeyOrigin.REUSED_EXISTING -> "(Used existing identity key)"
+                            KeyOrigin.FRESHLY_GENERATED -> "(Generated a FRESH identity key -- unexpected if already paired)"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(onClick = onBack) { Text("Back") }
             }
@@ -113,18 +125,32 @@ fun RemoteScreen(deviceName: String, ipAddress: String, onBack: () -> Unit) {
             ConnectionUiState.Connected -> RemoteControls(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 onKey = ::sendKey,
+                keyOrigin = connection.lastKeyOrigin,
             )
         }
     }
 }
 
 @Composable
-private fun RemoteControls(modifier: Modifier, onKey: (RemoteKey) -> Unit) {
+private fun RemoteControls(modifier: Modifier, onKey: (RemoteKey) -> Unit, keyOrigin: KeyOrigin?) {
     Column(
         modifier = modifier.padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
+        // Diagnostic for the "keeps asking to re-approve" bug report: if this reads
+        // "fresh identity key" on a device that was already paired, the Keychain
+        // isn't actually persisting the identity key between connection attempts.
+        if (keyOrigin != null) {
+            Text(
+                text = when (keyOrigin) {
+                    KeyOrigin.REUSED_EXISTING -> "Connected with existing identity key"
+                    KeyOrigin.FRESHLY_GENERATED -> "Connected with a FRESH identity key (unexpected if already paired)"
+                },
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Button(onClick = { onKey(RemoteKey.POWER) }, modifier = Modifier.fillMaxWidth()) {
             Text("Power")
         }

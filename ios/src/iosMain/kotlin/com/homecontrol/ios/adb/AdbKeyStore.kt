@@ -24,6 +24,16 @@ private const val KEY_ALIAS = "adb_identity_key_pkcs8"
 private const val RSA_KEY_SIZE_BITS = 2048
 
 /**
+ * Whether [AdbKeyStore.privateKeyPkcs8] found a previously-persisted key or
+ * had to generate a fresh one. Surfaced in the pairing/connect UI as a
+ * direct diagnostic: if a device keeps demanding re-approval on the TV
+ * despite "Always allow" being ticked, seeing [FRESHLY_GENERATED] on every
+ * single attempt (instead of just the very first) proves the Keychain
+ * persistence itself is the bug, rather than requiring speculation.
+ */
+enum class KeyOrigin { REUSED_EXISTING, FRESHLY_GENERATED }
+
+/**
  * Owns a single RSA-2048 identity keypair reused for every ADB pairing
  * attempt — exactly like a real `~/.android/adbkey`. Android TVs remember
  * which public keys they've approved, so generating a fresh key on every
@@ -36,11 +46,19 @@ private const val RSA_KEY_SIZE_BITS = 2048
 @OptIn(ExperimentalForeignApi::class)
 class AdbKeyStore(private val secureKeyStorage: SecureKeyStorage = SecureKeyStorage("")) {
 
+    /** Set by the most recent [privateKeyPkcs8] call — see [KeyOrigin]. */
+    var lastKeyOrigin: KeyOrigin? = null
+        private set
+
     /** PKCS8-encoded RSA private key, generating and persisting a new keypair on first use. */
     fun privateKeyPkcs8(): ByteArray {
-        secureKeyStorage.retrieve(KEY_ALIAS)?.let { return it }
+        secureKeyStorage.retrieve(KEY_ALIAS)?.let {
+            lastKeyOrigin = KeyOrigin.REUSED_EXISTING
+            return it
+        }
         val generated = generateKeyPkcs8()
         secureKeyStorage.store(KEY_ALIAS, generated)
+        lastKeyOrigin = KeyOrigin.FRESHLY_GENERATED
         return generated
     }
 

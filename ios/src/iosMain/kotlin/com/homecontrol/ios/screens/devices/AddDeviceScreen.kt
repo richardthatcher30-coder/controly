@@ -42,6 +42,7 @@ import com.homecontrol.core.model.DiscoveredDevice
 import com.homecontrol.core.model.PairedDevice
 import com.homecontrol.ios.adb.AdbApprovalTimeoutException
 import com.homecontrol.ios.adb.AdbConnection
+import com.homecontrol.ios.adb.KeyOrigin
 import com.homecontrol.ios.discovery.MdnsScanner
 import com.homecontrol.ios.discovery.UdpScanResult
 import com.homecontrol.ios.discovery.scanForWindowsPcs
@@ -64,7 +65,7 @@ private val ADB_SUPPORTED_TYPES = setOf(DeviceType.ANDROID_TV, DeviceType.GOOGLE
 private sealed interface PairingUiState {
     data object Idle : PairingUiState
     data class InProgress(val deviceName: String) : PairingUiState
-    data class Success(val deviceName: String) : PairingUiState
+    data class Success(val deviceName: String, val keyOrigin: KeyOrigin?) : PairingUiState
     data class Failed(val deviceName: String, val reason: String) : PairingUiState
 }
 
@@ -131,7 +132,8 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
         // this coroutines version's iOS target) -- Default is the portable choice here.
         scope.launch(Dispatchers.Default) {
             try {
-                AdbConnection().pair(ip)
+                val connection = AdbConnection()
+                connection.pair(ip)
                 store.add(
                     PairedDevice(
                         id = "adb:$ip",
@@ -147,7 +149,9 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
                         pluginId = "androidtv-adb-ios",
                     ),
                 )
-                withContext(Dispatchers.Main) { pairingState = PairingUiState.Success(deviceName) }
+                withContext(Dispatchers.Main) {
+                    pairingState = PairingUiState.Success(deviceName, connection.lastKeyOrigin)
+                }
             } catch (e: AdbApprovalTimeoutException) {
                 withContext(Dispatchers.Main) {
                     pairingState = PairingUiState.Failed(
@@ -291,7 +295,15 @@ fun AddDeviceScreen(onBack: () -> Unit, onPaired: () -> Unit) {
 
         is PairingUiState.Success -> PairingDialog(
             title = "Paired with ${state.deviceName}",
-            body = "You can now control it from the dashboard.",
+            body = "You can now control it from the dashboard." +
+                // Diagnostic for the "keeps asking to re-approve" bug report: if this
+                // reads "freshly generated" on anything but the very first-ever pairing
+                // attempt, the identity key isn't actually persisting in the Keychain.
+                when (state.keyOrigin) {
+                    KeyOrigin.REUSED_EXISTING -> "\n\n(Reused existing identity key.)"
+                    KeyOrigin.FRESHLY_GENERATED -> "\n\n(Generated a new identity key for this pairing.)"
+                    null -> ""
+                },
             onDismiss = {
                 pairingState = PairingUiState.Idle
                 onPaired()
