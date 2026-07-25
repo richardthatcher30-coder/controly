@@ -53,7 +53,7 @@ workflows:
           ./gradlew :ios:linkReleaseFrameworkIosArm64
       - name: Fetch signing files
         script: |
-          app-store-connect fetch-signing-files "$(xcode-project detect-bundle-id)" \
+          app-store-connect -v fetch-signing-files "$(xcode-project detect-bundle-id)" \
             --type IOS_APP_STORE \
             --create
       - name: Use signing files
