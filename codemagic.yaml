@@ -15,6 +15,14 @@ workflows:
       - name: Build Kotlin/Native framework (debug, simulator)
         script: |
           ./gradlew :ios:linkDebugFrameworkIosSimulatorArm64
+      - name: Run core:companion-protocol crypto tests (iOS simulator)
+        script: |
+          # Verifies cryptography-provider-apple's ECDH/SHA-256/HMAC output against
+          # a fixed test vector computed independently via Node's crypto module --
+          # already confirmed passing against cryptography-provider-jdk locally;
+          # this is the one part of that verification that needs a real Apple
+          # target and so can only run here, not on the Windows dev machine.
+          ./gradlew :core:companion-protocol:iosSimulatorArm64Test
       - name: Build Xcode project for the simulator (unsigned)
         script: |
           xcodebuild build \
