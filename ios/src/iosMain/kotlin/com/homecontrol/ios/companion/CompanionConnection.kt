@@ -28,9 +28,8 @@ import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.NSSelectorFromString
 import platform.Foundation.NSURLAuthenticationMethodServerTrust
-import platform.Foundation.NSURLCredential
 import platform.Foundation.NSURLSessionAuthChallengeCancelAuthenticationChallenge
-import platform.Foundation.NSURLSessionAuthChallengeUseCredential
+import platform.Foundation.NSURLSessionAuthChallengePerformDefaultHandling
 import platform.Security.SecCertificateCopyData
 import platform.Security.SecTrustGetCertificateAtIndex
 import platform.Security.SecTrustRef
@@ -54,6 +53,14 @@ class CompanionHandshakeException(message: String) : Exception(message)
  * command dispatch -- using Ktor's Darwin engine (wraps `NSURLSession`)
  * instead of OkHttp, and [CompanionCrypto] (`cryptography-core`) instead of
  * `javax.crypto`, since neither is available on Kotlin/Native.
+ *
+ * KNOWN LIMITATION: [openSocket]'s TLS challenge handler can't actually
+ * accept the server's self-signed certificate yet -- `NSURLCredential`'s
+ * `credentialForTrust:` factory method doesn't resolve in this Kotlin/Native
+ * toolchain (confirmed on a real build; unrelated `serverTrust` access was
+ * fixed via `performSelector`, but that doesn't rescue this one). Every
+ * connection attempt will fail its TLS handshake until this is fixed -- see
+ * the comment at that call site for the full story.
  *
  * Blocking-shaped like [com.homecontrol.ios.adb.AdbConnection] at the call
  * site (`pair`/`connect`/`sendCommand` are all suspend, called from
@@ -200,16 +207,19 @@ class CompanionConnection(
                     }
 
                     observedFingerprint = fingerprint
-                    // Earlier build attempts reported this AND serverTrust as "unresolved reference"
-                    // together, but that was a false correlation -- credentialForTrust: failing then was
-                    // just a cascade from trust's broken type (itself unresolved at the time). Now that
-                    // trust has a genuinely correct SecTrustRef type via the performSelector-based fix
-                    // above, the plain direct call resolves fine on its own (confirmed: performSelector
-                    // does NOT work for class/factory methods the same way it does for instance methods --
-                    // NSURLCredential.Companion doesn't expose an inherited class-side performSelector in
-                    // this binding, unlike a plain NSObject instance -- so this direct call is the real fix,
-                    // not a fallback).
-                    completionHandler(NSURLSessionAuthChallengeUseCredential, NSURLCredential.credentialForTrust(trust))
+                    // KNOWN LIMITATION, not yet resolved: NSURLCredential.credentialForTrust: (the class/
+                    // factory method that turns a SecTrustRef into a usable credential) is genuinely
+                    // unresolved in this Kotlin/Native toolchain -- confirmed via a real CodeMagic build,
+                    // same gap as serverTrust was, but performSelector doesn't rescue this one the way it
+                    // did for serverTrust (NSURLCredential.Companion doesn't expose an inherited class-
+                    // side performSelector). Everything above this line (extracting the cert, computing
+                    // its fingerprint, the TOFU pin check) genuinely works. What's missing is actually
+                    // accepting the self-signed certificate: performDefaultHandling here means iOS's
+                    // normal system trust evaluation runs instead, which will REJECT a self-signed cert --
+                    // so a Windows Companion / Android Companion connection will fail its TLS handshake
+                    // with an error surfaced through the pair()/connect() failure path, not hang silently.
+                    // Needs a proper fix for actual Companion-protocol connections to work end-to-end.
+                    completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, null)
                 }
             }
         }
