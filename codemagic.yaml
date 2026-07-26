@@ -12,18 +12,6 @@ workflows:
         XCODE_WORKSPACE: "iosApp/iosApp.xcodeproj"
         XCODE_SCHEME: "iosApp"
     scripts:
-      - name: Diagnose NSURLProtectionSpace.serverTrust declaration
-        script: |
-          # Temporary diagnostic: CompanionConnection.kt's use of
-          # challenge.protectionSpace.serverTrust fails to compile with
-          # "Unresolved reference" on Kotlin/Native, and two guesses (adding
-          # @OptIn(UnsafeNumber::class), calling it as serverTrust()) both
-          # failed the same way. Rather than keep guessing at the Kotlin
-          # binding shape, get the real Apple SDK header declaration this
-          # machine actually has, ground truth instead of speculation.
-          SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
-          echo "SDK: $SDK_PATH"
-          grep -B 2 -A 2 "serverTrust" "$SDK_PATH/System/Library/Frameworks/Foundation.framework/Headers/NSURLProtectionSpace.h" || echo "Not found in NSURLProtectionSpace.h"
       - name: Build Kotlin/Native framework (debug, simulator)
         script: |
           ./gradlew :ios:linkDebugFrameworkIosSimulatorArm64

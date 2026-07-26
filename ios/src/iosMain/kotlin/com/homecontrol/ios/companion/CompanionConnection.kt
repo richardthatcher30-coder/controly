@@ -19,17 +19,21 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.UnsafeNumber
+import kotlinx.cinterop.reinterpret
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import platform.Foundation.CFBridgingRelease
+import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
+import platform.Foundation.NSObject
 import platform.Foundation.NSURLAuthenticationMethodServerTrust
 import platform.Foundation.NSURLCredential
 import platform.Foundation.NSURLSessionAuthChallengeCancelAuthenticationChallenge
 import platform.Foundation.NSURLSessionAuthChallengeUseCredential
 import platform.Security.SecCertificateCopyData
 import platform.Security.SecTrustGetCertificateAtIndex
+import platform.Security.SecTrustRef
 
 private const val COMPANION_PORT = 7591
 private const val COMPANION_PATH = "/companion"
@@ -159,7 +163,17 @@ class CompanionConnection(
                         completionHandler(NSURLSessionAuthChallengeCancelAuthenticationChallenge, null)
                         return@handleChallenge
                     }
-                    val trust = challenge.protectionSpace.serverTrust
+                    // NSURLProtectionSpace.serverTrust (a completely standard, long-standing
+                    // `@property (nullable, readonly) SecTrustRef serverTrust` per the real SDK
+                    // header) doesn't resolve as a Kotlin/Native property in this toolchain --
+                    // confirmed via two other failed attempts (plain property, serverTrust()
+                    // method call), both "Unresolved reference". Sidestepping the static binding
+                    // entirely via Objective-C's dynamic valueForKey: (KVC), which doesn't depend
+                    // on Kotlin/Native having generated a matching declaration, then bridging the
+                    // returned id to SecTrustRef via CFBridgingRetain + reinterpret -- the same
+                    // NSObject->CF bridge already proven elsewhere in this codebase (see
+                    // core:crypto's asCFDictionaryRef()).
+                    val trust = (challenge.protectionSpace.valueForKey("serverTrust") as? NSObject)?.asSecTrustRef()
                     val certificate = trust?.let { SecTrustGetCertificateAtIndex(it, 0) }
                     val certificateData = certificate?.let { SecCertificateCopyData(it) }
                     val certificateDer = certificateData?.let { (CFBridgingRelease(it) as NSData).toByteArray() }
@@ -219,3 +233,6 @@ class CompanionConnection(
         return runCatching { wireJson.decodeFromString(WireMessage.serializer(), frame.readText()) }.getOrNull()
     }
 }
+
+/** See the doc comment at this function's one call site (openSocket's handleChallenge). */
+private fun NSObject.asSecTrustRef(): SecTrustRef = CFBridgingRetain(this)!!.reinterpret()
