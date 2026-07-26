@@ -46,7 +46,7 @@ fun ControlyApp() {
                     onAddDevice = { push(Screen.AddDeviceCategory) },
                     onAbout = { push(Screen.About) },
                     onDeviceClick = { device ->
-                        push(Screen.Remote(device.id, device.name, device.ipAddress))
+                        push(Screen.Remote(device.id, device.name, device.ipAddress, device.deviceType))
                     },
                 )
                 Screen.About -> AboutScreen(onBack = { pop() })
@@ -68,6 +68,7 @@ fun ControlyApp() {
                 is Screen.Remote -> RemoteScreen(
                     deviceName = screen.deviceName,
                     ipAddress = screen.ipAddress,
+                    deviceType = screen.deviceType,
                     onBack = { pop() },
                 )
             }

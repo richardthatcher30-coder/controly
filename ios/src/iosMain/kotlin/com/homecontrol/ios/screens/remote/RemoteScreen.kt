@@ -30,12 +30,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.homecontrol.core.model.DeviceType
 import com.homecontrol.core.model.RemoteKey
 import com.homecontrol.ios.adb.AdbConnection
 import com.homecontrol.ios.adb.KeyOrigin
+import com.homecontrol.ios.companion.CompanionConnection
+import com.homecontrol.ios.screens.devices.COMPANION_SUPPORTED_TYPES
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 private sealed interface ConnectionUiState {
     data object Connecting : ConnectionUiState
@@ -44,22 +50,27 @@ private sealed interface ConnectionUiState {
 }
 
 /**
- * Sends key presses over an [AdbConnection] held open for the lifetime of
- * this screen — connecting once on entry (fast, since [connect] reuses an
- * already-trusted key from pairing, no approval wait expected) rather than
- * reconnecting per button press.
+ * Sends key presses over an [AdbConnection] (ADB-supported types) or a
+ * [CompanionConnection] (Windows PC, see [COMPANION_SUPPORTED_TYPES]) held
+ * open for the lifetime of this screen — connecting once on entry (fast,
+ * since [connect][AdbConnection.connect] reuses an already-trusted key from
+ * pairing, no approval wait expected) rather than reconnecting per button
+ * press. Only one of [adbConnection]/[companionConnection] is ever created,
+ * picked once from [deviceType] -- see [isCompanionDevice].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RemoteScreen(deviceName: String, ipAddress: String, onBack: () -> Unit) {
+fun RemoteScreen(deviceName: String, ipAddress: String, deviceType: DeviceType, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val connection = remember { AdbConnection() }
+    val isCompanionDevice = deviceType in COMPANION_SUPPORTED_TYPES
+    val adbConnection = remember { if (isCompanionDevice) null else AdbConnection() }
+    val companionConnection = remember { if (isCompanionDevice) CompanionConnection() else null }
     var connectionState by remember { mutableStateOf<ConnectionUiState>(ConnectionUiState.Connecting) }
 
     DisposableEffect(ipAddress) {
         scope.launch(Dispatchers.Default) {
             try {
-                connection.connect(ipAddress)
+                if (isCompanionDevice) companionConnection!!.connect(ipAddress) else adbConnection!!.connect(ipAddress)
                 withContext(Dispatchers.Main) { connectionState = ConnectionUiState.Connected }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -68,14 +79,22 @@ fun RemoteScreen(deviceName: String, ipAddress: String, onBack: () -> Unit) {
             }
         }
         onDispose {
-            scope.launch(Dispatchers.Default) { connection.disconnect() }
+            scope.launch(Dispatchers.Default) {
+                if (isCompanionDevice) companionConnection?.disconnect() else adbConnection?.disconnect()
+            }
         }
     }
 
     fun sendKey(key: RemoteKey) {
         if (connectionState !is ConnectionUiState.Connected) return
         scope.launch(Dispatchers.Default) {
-            runCatching { connection.shell("input keyevent ${androidKeycodeFor(key)}") }
+            runCatching {
+                if (isCompanionDevice) {
+                    companionConnection!!.sendCommand("key_event", buildJsonObject { put("key", JsonPrimitive(key.name)) })
+                } else {
+                    adbConnection!!.shell("input keyevent ${androidKeycodeFor(key)}")
+                }
+            }
         }
     }
 
@@ -107,10 +126,10 @@ fun RemoteScreen(deviceName: String, ipAddress: String, onBack: () -> Unit) {
                 Text(text = "Couldn't connect", style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(text = state.message, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-                connection.lastKeyOrigin?.let { origin ->
+                adbConnection?.lastKeyOrigin?.let { origin ->
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = keyOriginDiagnosticText(origin, connection.lastRetrieveMissStatus),
+                        text = keyOriginDiagnosticText(origin, adbConnection.lastRetrieveMissStatus),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -122,8 +141,8 @@ fun RemoteScreen(deviceName: String, ipAddress: String, onBack: () -> Unit) {
             ConnectionUiState.Connected -> RemoteControls(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 onKey = ::sendKey,
-                keyOrigin = connection.lastKeyOrigin,
-                retrieveMissStatus = connection.lastRetrieveMissStatus,
+                keyOrigin = adbConnection?.lastKeyOrigin,
+                retrieveMissStatus = adbConnection?.lastRetrieveMissStatus,
             )
         }
     }

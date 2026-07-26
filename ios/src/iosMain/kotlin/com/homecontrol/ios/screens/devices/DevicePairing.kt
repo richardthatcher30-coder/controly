@@ -15,6 +15,8 @@ import com.homecontrol.core.model.PairedDevice
 import com.homecontrol.ios.adb.AdbApprovalTimeoutException
 import com.homecontrol.ios.adb.AdbConnection
 import com.homecontrol.ios.adb.KeyOrigin
+import com.homecontrol.ios.companion.CompanionConnection
+import com.homecontrol.ios.companion.CompanionPairingRejectedException
 import com.homecontrol.ios.storage.PairedDeviceStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +34,9 @@ val MANUAL_DEVICE_TYPE_OPTIONS: List<Pair<String, DeviceType>> = listOf(
 /** Only these use the ADB-over-TCP pairing this iOS build actually implements — see [AdbConnection]'s doc comment. */
 val ADB_SUPPORTED_TYPES = setOf(DeviceType.ANDROID_TV, DeviceType.GOOGLE_TV, DeviceType.FIRE_TV)
 
+/** Uses the Companion protocol (see [CompanionConnection]'s doc comment) instead of ADB. */
+val COMPANION_SUPPORTED_TYPES = setOf(DeviceType.WINDOWS_PC)
+
 fun deviceTypeLabel(deviceType: DeviceType): String = when (deviceType) {
     DeviceType.GOOGLE_TV -> "Google TV"
     DeviceType.UNKNOWN -> "Unknown device"
@@ -40,7 +45,7 @@ fun deviceTypeLabel(deviceType: DeviceType): String = when (deviceType) {
 
 sealed interface PairingUiState {
     data object Idle : PairingUiState
-    data class InProgress(val deviceName: String) : PairingUiState
+    data class InProgress(val deviceName: String, val deviceType: DeviceType) : PairingUiState
     data class Success(val deviceName: String, val keyOrigin: KeyOrigin?, val retrieveMissStatus: Long?) : PairingUiState
     data class Failed(val deviceName: String, val reason: String) : PairingUiState
 }
@@ -62,41 +67,68 @@ class PairingController internal constructor(
         private set
 
     fun start(ip: String, deviceName: String, selectedType: DeviceType) {
-        if (selectedType !in ADB_SUPPORTED_TYPES) {
+        if (selectedType !in ADB_SUPPORTED_TYPES && selectedType !in COMPANION_SUPPORTED_TYPES) {
             state = PairingUiState.Failed(
                 deviceName,
                 "${deviceTypeLabel(selectedType)} pairing isn't supported on iOS yet — coming soon.",
             )
             return
         }
-        state = PairingUiState.InProgress(deviceName)
+        state = PairingUiState.InProgress(deviceName, selectedType)
         // Dispatchers.IO is internal on Kotlin/Native (not part of the public API for
         // this coroutines version's iOS target) -- Default is the portable choice here.
         scope.launch(Dispatchers.Default) {
             try {
-                val connection = AdbConnection()
-                connection.pair(ip)
-                store.add(
-                    PairedDevice(
-                        id = "adb:$ip",
-                        name = deviceName,
-                        manufacturer = "",
-                        model = "",
-                        ipAddress = ip,
-                        macAddress = null,
-                        deviceType = selectedType,
-                        firmwareVersion = null,
-                        capabilities = DeviceCapabilities.NONE,
-                        isOnline = true,
-                        pluginId = "androidtv-adb-ios",
-                    ),
-                )
-                withContext(Dispatchers.Main) {
-                    state = PairingUiState.Success(deviceName, connection.lastKeyOrigin, connection.lastRetrieveMissStatus)
+                if (selectedType in COMPANION_SUPPORTED_TYPES) {
+                    val connection = CompanionConnection()
+                    connection.pair(ip)
+                    store.add(
+                        PairedDevice(
+                            id = "companion:$ip",
+                            name = deviceName,
+                            manufacturer = "",
+                            model = "",
+                            ipAddress = ip,
+                            macAddress = null,
+                            deviceType = selectedType,
+                            firmwareVersion = null,
+                            capabilities = DeviceCapabilities.NONE,
+                            isOnline = true,
+                            pluginId = "windows-companion-ios",
+                        ),
+                    )
+                    withContext(Dispatchers.Main) {
+                        state = PairingUiState.Success(deviceName, keyOrigin = null, retrieveMissStatus = null)
+                    }
+                } else {
+                    val connection = AdbConnection()
+                    connection.pair(ip)
+                    store.add(
+                        PairedDevice(
+                            id = "adb:$ip",
+                            name = deviceName,
+                            manufacturer = "",
+                            model = "",
+                            ipAddress = ip,
+                            macAddress = null,
+                            deviceType = selectedType,
+                            firmwareVersion = null,
+                            capabilities = DeviceCapabilities.NONE,
+                            isOnline = true,
+                            pluginId = "androidtv-adb-ios",
+                        ),
+                    )
+                    withContext(Dispatchers.Main) {
+                        state = PairingUiState.Success(deviceName, connection.lastKeyOrigin, connection.lastRetrieveMissStatus)
+                    }
                 }
             } catch (e: AdbApprovalTimeoutException) {
                 withContext(Dispatchers.Main) {
                     state = PairingUiState.Failed(deviceName, "Approval timed out — check the TV's screen and try again.")
+                }
+            } catch (e: CompanionPairingRejectedException) {
+                withContext(Dispatchers.Main) {
+                    state = PairingUiState.Failed(deviceName, "Pairing was declined on the PC.")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -125,8 +157,12 @@ fun PairingDialogHost(controller: PairingController) {
     when (val state = controller.state) {
         is PairingUiState.InProgress -> PairingDialog(
             title = "Pairing with ${state.deviceName}",
-            body = "Check the TV's screen and select \"Allow\" (ideally \"Always allow\") on the " +
-                "debugging prompt. This can take up to two minutes.",
+            body = if (state.deviceType in COMPANION_SUPPORTED_TYPES) {
+                "Check the PC's screen and approve the pairing request there."
+            } else {
+                "Check the TV's screen and select \"Allow\" (ideally \"Always allow\") on the " +
+                    "debugging prompt. This can take up to two minutes."
+            },
             onDismiss = null,
         )
 

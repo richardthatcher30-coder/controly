@@ -1,5 +1,7 @@
 package com.homecontrol.ios.navigation
 
+import com.homecontrol.core.model.DeviceType
+
 /**
  * Hand-rolled screen enum + back-stack instead of a navigation library.
  * `androidx.navigation:navigation-compose` (used on Android) has uncertain
@@ -15,5 +17,5 @@ sealed interface Screen {
     data object DeviceDiscovery : Screen
     data object AddDeviceManually : Screen
     data object AddCamera : Screen
-    data class Remote(val deviceId: String, val deviceName: String, val ipAddress: String) : Screen
+    data class Remote(val deviceId: String, val deviceName: String, val ipAddress: String, val deviceType: DeviceType) : Screen
 }
