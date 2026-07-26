@@ -42,6 +42,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import platform.Foundation.NSNotificationCenter
+import platform.UIKit.UIApplicationDidBecomeActiveNotification
 
 private sealed interface ConnectionUiState {
     data object Connecting : ConnectionUiState
@@ -68,17 +70,52 @@ fun RemoteScreen(deviceName: String, ipAddress: String, deviceType: DeviceType, 
     var connectionState by remember { mutableStateOf<ConnectionUiState>(ConnectionUiState.Connecting) }
 
     DisposableEffect(ipAddress) {
-        scope.launch(Dispatchers.Default) {
-            try {
-                if (isCompanionDevice) companionConnection!!.connect(ipAddress) else adbConnection!!.connect(ipAddress)
-                withContext(Dispatchers.Main) { connectionState = ConnectionUiState.Connected }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    connectionState = ConnectionUiState.Failed(e.message ?: "Couldn't connect to $ipAddress")
+        // Guards against two overlapping connect() calls to the same device --
+        // e.g. the app backgrounding and returning (see the
+        // UIApplicationDidBecomeActiveNotification observer below) while the
+        // initial connect from screen-entry is still waiting. AdbConnection's
+        // own connect() already reuses a live socket instead of always
+        // reopening, but that only helps once a connection exists; a second
+        // *concurrent* attempt while the first is still mid-handshake would
+        // still race it. Plain var, not a Job, because both call sites here
+        // (this effect's launch and the notification callback below) run on
+        // the main thread -- Compose's own and NSNotificationCenter's queue =
+        // null delivery are both main-thread, so there's no data race to guard
+        // against beyond "don't start a second one while one is running".
+        var connecting = false
+
+        fun startConnect() {
+            if (connecting) return
+            connecting = true
+            scope.launch(Dispatchers.Default) {
+                try {
+                    if (isCompanionDevice) companionConnection!!.connect(ipAddress) else adbConnection!!.connect(ipAddress)
+                    withContext(Dispatchers.Main) { connectionState = ConnectionUiState.Connected }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        connectionState = ConnectionUiState.Failed(e.message ?: "Couldn't connect to $ipAddress")
+                    }
+                } finally {
+                    connecting = false
                 }
             }
         }
+
+        startConnect()
+
+        // The initial connect above only runs once, on screen entry -- it
+        // doesn't notice a connection that died while this screen was in the
+        // background (phone locked, user switched apps). Re-validate on every
+        // return to the foreground rather than leaving a dead remote until the
+        // user notices and manually goes back and re-enters the screen.
+        val activeObserver = NSNotificationCenter.defaultCenter.addObserverForName(
+            name = UIApplicationDidBecomeActiveNotification,
+            `object` = null,
+            queue = null,
+        ) { _ -> startConnect() }
+
         onDispose {
+            NSNotificationCenter.defaultCenter.removeObserver(activeObserver)
             scope.launch(Dispatchers.Default) {
                 if (isCompanionDevice) companionConnection?.disconnect() else adbConnection?.disconnect()
             }

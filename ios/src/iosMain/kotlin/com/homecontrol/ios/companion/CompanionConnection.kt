@@ -17,23 +17,30 @@ import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.cinterop.CFunction
+import kotlinx.cinterop.COpaquePointer
+import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.UnsafeNumber
+import kotlinx.cinterop.interpretObjCPointer
 import kotlinx.cinterop.reinterpret
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
+import platform.Foundation.NSClassFromString
 import platform.Foundation.NSData
 import platform.Foundation.NSSelectorFromString
 import platform.Foundation.NSURLAuthenticationMethodServerTrust
+import platform.Foundation.NSURLCredential
 import platform.Foundation.NSURLSessionAuthChallengeCancelAuthenticationChallenge
-import platform.Foundation.NSURLSessionAuthChallengePerformDefaultHandling
+import platform.Foundation.NSURLSessionAuthChallengeUseCredential
 import platform.Security.SecCertificateCopyData
 import platform.Security.SecTrustGetCertificateAtIndex
 import platform.Security.SecTrustRef
 import platform.darwin.NSObject
+import platform.darwin.objc_msgSend
 
 private const val COMPANION_PORT = 7591
 private const val COMPANION_PATH = "/companion"
@@ -54,13 +61,16 @@ class CompanionHandshakeException(message: String) : Exception(message)
  * instead of OkHttp, and [CompanionCrypto] (`cryptography-core`) instead of
  * `javax.crypto`, since neither is available on Kotlin/Native.
  *
- * KNOWN LIMITATION: [openSocket]'s TLS challenge handler can't actually
- * accept the server's self-signed certificate yet -- `NSURLCredential`'s
- * `credentialForTrust:` factory method doesn't resolve in this Kotlin/Native
- * toolchain (confirmed on a real build; unrelated `serverTrust` access was
- * fixed via `performSelector`, but that doesn't rescue this one). Every
- * connection attempt will fail its TLS handshake until this is fixed -- see
- * the comment at that call site for the full story.
+ * TLS trust: [openSocket]'s challenge handler accepts the server's
+ * self-signed certificate via [credentialForTrust] -- a raw `objc_msgSend`
+ * call, not a typed Kotlin/Native binding, because `NSURLCredential`'s
+ * `credentialForTrust:` factory method (like `NSURLProtectionSpace.serverTrust`
+ * above it) doesn't resolve as a normal Kotlin/Native declaration: it's a
+ * Foundation class method whose parameter is a Security.framework CF type,
+ * and that cross-framework CF bridging is a known cinterop gap in this
+ * toolchain. `performSelector` (used for `serverTrust`) only works on
+ * instances, not class/factory methods, so this uses the more general
+ * escape hatch instead -- see [credentialForTrust]'s own comment.
  *
  * Blocking-shaped like [com.homecontrol.ios.adb.AdbConnection] at the call
  * site (`pair`/`connect`/`sendCommand` are all suspend, called from
@@ -121,6 +131,11 @@ class CompanionConnection(
      * [CompanionDeviceStore] and the HMAC challenge-response instead.
      */
     suspend fun connect(ipAddress: String): Unit = withTimeout(AUTH_TIMEOUT_MS) {
+        // Reuse an already-open session rather than always tearing down and
+        // reopening -- same rationale as AdbConnection.connect(): a resumed
+        // screen re-triggering connect() while one is already live shouldn't
+        // open a second competing connection to the same server.
+        if (session != null) return@withTimeout
         val record = deviceStore.find(ipAddress) ?: throw CompanionHandshakeException("$ipAddress was never paired")
         openSocket(ipAddress, pinnedFingerprint = record.certificateFingerprint)
         serverPublicKeyBase64 = record.serverPublicKeyBase64
@@ -207,19 +222,7 @@ class CompanionConnection(
                     }
 
                     observedFingerprint = fingerprint
-                    // KNOWN LIMITATION, not yet resolved: NSURLCredential.credentialForTrust: (the class/
-                    // factory method that turns a SecTrustRef into a usable credential) is genuinely
-                    // unresolved in this Kotlin/Native toolchain -- confirmed via a real CodeMagic build,
-                    // same gap as serverTrust was, but performSelector doesn't rescue this one the way it
-                    // did for serverTrust (NSURLCredential.Companion doesn't expose an inherited class-
-                    // side performSelector). Everything above this line (extracting the cert, computing
-                    // its fingerprint, the TOFU pin check) genuinely works. What's missing is actually
-                    // accepting the self-signed certificate: performDefaultHandling here means iOS's
-                    // normal system trust evaluation runs instead, which will REJECT a self-signed cert --
-                    // so a Windows Companion / Android Companion connection will fail its TLS handshake
-                    // with an error surfaced through the pair()/connect() failure path, not hang silently.
-                    // Needs a proper fix for actual Companion-protocol connections to work end-to-end.
-                    completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, null)
+                    completionHandler(NSURLSessionAuthChallengeUseCredential, credentialForTrust(trust))
                 }
             }
         }
@@ -260,3 +263,26 @@ class CompanionConnection(
 /** See the doc comment at this function's one call site (openSocket's handleChallenge). */
 @OptIn(ExperimentalForeignApi::class)
 private fun NSObject.asSecTrustRef(): SecTrustRef = CFBridgingRetain(this)!!.reinterpret()
+
+/**
+ * `NSURLCredential.credentialForTrust(trust)` by hand, since the typed
+ * Kotlin/Native binding for this Foundation factory method doesn't resolve
+ * (see the class doc comment above). `objc_msgSend` is the actual C function
+ * every Objective-C message send compiles down to -- `id objc_msgSend(id
+ * self, SEL op, ...)` -- so reinterpreting its function pointer to the exact
+ * 3-argument shape this one call needs (class, selector, trust) and calling
+ * it directly reaches the real implementation without going through any
+ * Kotlin/Native-generated typed wrapper at all. This is the general-purpose
+ * version of the `performSelector` trick used for `serverTrust` above --
+ * that one works because `performSelector` is an *instance* method every
+ * NSObject responds to, but `credentialForTrust:` is a *class* method with
+ * no equivalent typed escape hatch, so this drops one level lower.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun credentialForTrust(trust: SecTrustRef): NSURLCredential {
+    val credentialClass = NSClassFromString("NSURLCredential")
+    val selector = NSSelectorFromString("credentialForTrust:")
+    val msgSend = ::objc_msgSend.reinterpret<CPointer<CFunction<(COpaquePointer?, COpaquePointer?, SecTrustRef) -> COpaquePointer?>>>()
+    val result = msgSend(credentialClass, selector, trust)
+    return interpretObjCPointer<NSURLCredential>(result!!.rawValue)
+}
