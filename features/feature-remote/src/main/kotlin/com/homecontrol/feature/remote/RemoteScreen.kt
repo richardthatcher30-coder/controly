@@ -363,16 +363,22 @@ private fun TopControlsRow(
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (capabilities.supportsWakeOnLan) {
+                // One combined button, not two: Wake-on-LAN doesn't need a live
+                // connection, so instead of a separate always-enabled "Power on"
+                // button next to the normal power-off one (which looked like two
+                // redundant power buttons), this single button switches action
+                // based on whether the device is currently connected -- not
+                // connected means tapping wakes it instead of being a dead
+                // disabled button, connected means it's a normal power-off toggle.
                 RemoteCircleButton(
                     icon = Icons.Filled.PowerSettingsNew,
-                    contentDescription = "Power on",
+                    contentDescription = if (enabled) "Power off" else "Power on",
                     enabled = true,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    onClick = onPowerOn,
+                    containerColor = if (enabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    contentColor = if (enabled) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary,
+                    onClick = if (enabled) onPowerOff else onPowerOn,
                 )
-            }
-            if (capabilities.supportsPower) {
+            } else if (capabilities.supportsPower) {
                 RemoteCircleButton(
                     icon = Icons.Filled.PowerSettingsNew,
                     contentDescription = "Power off",
