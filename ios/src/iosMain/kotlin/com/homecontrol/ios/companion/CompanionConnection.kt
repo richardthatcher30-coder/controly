@@ -19,7 +19,6 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.UnsafeNumber
-import kotlinx.cinterop.interpretObjCPointer
 import kotlinx.cinterop.reinterpret
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -201,14 +200,16 @@ class CompanionConnection(
                     }
 
                     observedFingerprint = fingerprint
-                    // NSURLCredential.credentialForTrust: (a class/factory method, +credentialForTrust:)
-                    // has the same "Unresolved reference" gap serverTrust did -- same fix, performSelector,
-                    // but the two-argument overload since this selector takes the trust as its one
-                    // parameter. NSURLCredential's companion object represents its Class object, which
-                    // (like any Class in ObjC) also responds to inherited NSObject instance methods
-                    // such as performSelector:withObject:.
-                    val credential = NSURLCredential.performSelector(NSSelectorFromString("credentialForTrust:"), trust.asNSObjectViaObjCPointer())
-                    completionHandler(NSURLSessionAuthChallengeUseCredential, credential as? NSURLCredential)
+                    // Earlier build attempts reported this AND serverTrust as "unresolved reference"
+                    // together, but that was a false correlation -- credentialForTrust: failing then was
+                    // just a cascade from trust's broken type (itself unresolved at the time). Now that
+                    // trust has a genuinely correct SecTrustRef type via the performSelector-based fix
+                    // above, the plain direct call resolves fine on its own (confirmed: performSelector
+                    // does NOT work for class/factory methods the same way it does for instance methods --
+                    // NSURLCredential.Companion doesn't expose an inherited class-side performSelector in
+                    // this binding, unlike a plain NSObject instance -- so this direct call is the real fix,
+                    // not a fallback).
+                    completionHandler(NSURLSessionAuthChallengeUseCredential, NSURLCredential.credentialForTrust(trust))
                 }
             }
         }
@@ -249,7 +250,3 @@ class CompanionConnection(
 /** See the doc comment at this function's one call site (openSocket's handleChallenge). */
 @OptIn(ExperimentalForeignApi::class)
 private fun NSObject.asSecTrustRef(): SecTrustRef = CFBridgingRetain(this)!!.reinterpret()
-
-/** The reverse bridge of [asSecTrustRef] -- reinterprets the raw pointer directly, same pattern as this codebase's `asNSString()` helpers. */
-@OptIn(ExperimentalForeignApi::class)
-private fun SecTrustRef.asNSObjectViaObjCPointer(): NSObject = interpretObjCPointer(this.rawValue)
