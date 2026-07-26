@@ -16,6 +16,11 @@ import com.homecontrol.ios.screens.devices.AddDeviceCategoryScreen
 import com.homecontrol.ios.screens.devices.AddDeviceManuallyScreen
 import com.homecontrol.ios.screens.devices.DeviceDiscoveryScreen
 import com.homecontrol.ios.screens.remote.RemoteScreen
+import com.homecontrol.ios.screens.settings.LicensesScreen
+import com.homecontrol.ios.screens.settings.PrivacyOptionsScreen
+import com.homecontrol.ios.screens.settings.PrivacyPolicyScreen
+import com.homecontrol.ios.screens.settings.SettingsScreen
+import com.homecontrol.ios.screens.settings.TermsScreen
 import com.homecontrol.ios.theme.ControlyTheme
 
 /** Composition root — replaces `MainViewController`'s Phase 1 placeholder body. */
@@ -49,7 +54,7 @@ fun ControlyApp() {
                         push(Screen.Remote(device.id, device.name, device.ipAddress, device.deviceType))
                     },
                 )
-                Screen.About -> AboutScreen(onBack = { pop() })
+                Screen.About -> AboutScreen(onBack = { pop() }, onSettings = { push(Screen.Settings) })
                 Screen.AddDeviceCategory -> AddDeviceCategoryScreen(
                     onBack = { pop() },
                     onDevicesClick = { push(Screen.DeviceDiscovery) },
@@ -71,6 +76,17 @@ fun ControlyApp() {
                     deviceType = screen.deviceType,
                     onBack = { pop() },
                 )
+                Screen.Settings -> SettingsScreen(
+                    onBack = { pop() },
+                    onTermsClick = { push(Screen.Terms) },
+                    onPrivacyPolicyClick = { push(Screen.PrivacyPolicy) },
+                    onPrivacyOptionsClick = { push(Screen.PrivacyOptions) },
+                    onLicensesClick = { push(Screen.Licenses) },
+                )
+                Screen.Terms -> TermsScreen(onBack = { pop() })
+                Screen.PrivacyPolicy -> PrivacyPolicyScreen(onBack = { pop() })
+                Screen.PrivacyOptions -> PrivacyOptionsScreen(onBack = { pop() })
+                Screen.Licenses -> LicensesScreen(onBack = { pop() })
             }
         }
     }

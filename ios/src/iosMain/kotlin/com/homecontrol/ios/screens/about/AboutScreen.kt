@@ -29,7 +29,7 @@ import platform.UIKit.UIApplication
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AboutScreen(onBack: () -> Unit) {
+fun AboutScreen(onBack: () -> Unit, onSettings: () -> Unit) {
     val shortVersion = NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String ?: "-"
     val buildNumber = NSBundle.mainBundle.infoDictionary?.get("CFBundleVersion") as? String ?: "-"
 
@@ -92,6 +92,9 @@ fun AboutScreen(onBack: () -> Unit) {
                 }
                 TextButton(onClick = { openUrl("https://support.controly.co.uk") }) {
                     Text("Support")
+                }
+                TextButton(onClick = onSettings) {
+                    Text("Terms, privacy & licenses")
                 }
             }
         }
