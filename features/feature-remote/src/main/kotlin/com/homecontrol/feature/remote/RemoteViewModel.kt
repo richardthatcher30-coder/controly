@@ -10,6 +10,7 @@ import com.homecontrol.core.model.ConnectionResult
 import com.homecontrol.core.model.MouseButton
 import com.homecontrol.core.model.PairedDevice
 import com.homecontrol.core.model.RemoteKey
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +21,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-private const val CONNECT_TIMEOUT_MS = 20_000L
+// Must stay >= plugin-androidtv's AdbConnection.APPROVAL_TIMEOUT_MS (120s):
+// that's how long a real on-screen "Allow debugging?" wait can legitimately
+// run, and giving up here sooner just means a "Timed out" error while the
+// real attempt is still live underneath — priming the next retry to collide
+// with it (observed on real Fire TV hardware as a "Connection reset").
+private const val CONNECT_TIMEOUT_MS = 125_000L
 
 data class RemoteUiState(
     val device: PairedDevice? = null,
@@ -69,6 +75,7 @@ class RemoteViewModel(
     private var hasLoadedApps = false
     private var hasLoadedQuickActions = false
     private var hasLoadedSources = false
+    private var connectJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -190,7 +197,17 @@ class RemoteViewModel(
     }
 
     private fun connect(device: PairedDevice) {
-        viewModelScope.launch {
+        // A resumed screen (e.g. the user tabbing away to look at the TV and
+        // tap "Allow" on an on-screen pairing prompt) re-triggers this via
+        // retryConnect() on ON_RESUME. Some devices' handshakes (real Fire TV
+        // hardware in particular) block for many seconds waiting on that
+        // physical approval and don't respond to coroutine cancellation, so
+        // firing a second connect() here doesn't replace the first — it opens
+        // a genuinely second TCP connection while the first is still pending,
+        // and the TV's single-connection ADB daemon resets both. If one is
+        // already in flight, let it run rather than colliding with it.
+        if (connectJob?.isActive == true) return
+        connectJob = viewModelScope.launch {
             _uiState.update { it.copy(isConnecting = true) }
             // A hard backstop: whatever the plugin does internally, the UI
             // must never spin forever with no way out. A real hang here
