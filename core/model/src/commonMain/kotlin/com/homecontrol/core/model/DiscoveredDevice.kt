@@ -25,8 +25,12 @@ enum class DiscoveryProtocol {
     MDNS,
     SSDP,
     UDP_BROADCAST,
-    // Devices reachable only over plain ADB (Fire TV included) don't advertise
-    // themselves over any of the above — there's no zero-config broadcast for
-    // ADB debugging, so those are added by IP address instead of discovered.
+    // Fire TV in particular doesn't advertise itself over any of the above —
+    // confirmed empirically against a real device (no response to mDNS
+    // service queries, not even the broad "list all services" meta-query,
+    // despite having port 8009 open) — there's no zero-config broadcast for
+    // plain ADB debugging. ADB_PORT_SCAN below is the actual fix for that;
+    // MANUAL is the fallback for anything even that doesn't find.
+    ADB_PORT_SCAN,
     MANUAL,
 }

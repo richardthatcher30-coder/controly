@@ -24,8 +24,8 @@ android {
 
     defaultConfig {
         applicationId = "com.controly.app"
-        versionCode = 8
-        versionName = "0.1.6"
+        versionCode = 9
+        versionName = "0.1.7"
     }
 
     signingConfigs {
