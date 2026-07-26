@@ -26,6 +26,7 @@ import kotlinx.serialization.json.JsonElement
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
+import platform.Foundation.NSSelectorFromString
 import platform.Foundation.NSURLAuthenticationMethodServerTrust
 import platform.Foundation.NSURLCredential
 import platform.Foundation.NSURLSessionAuthChallengeCancelAuthenticationChallenge
@@ -165,16 +166,18 @@ class CompanionConnection(
                     }
                     // NSURLProtectionSpace.serverTrust (a completely standard, long-standing
                     // `@property (nullable, readonly) SecTrustRef serverTrust` per the real SDK
-                    // header) doesn't resolve as a Kotlin/Native property in this toolchain --
-                    // confirmed via two other failed attempts (plain property, serverTrust()
-                    // method call), both "Unresolved reference". Sidestepping the static binding
-                    // entirely via Objective-C's dynamic valueForKey: (KVC), which doesn't depend
-                    // on Kotlin/Native having generated a matching declaration, then bridging the
-                    // returned id to SecTrustRef via CFBridgingRetain + reinterpret -- the same
-                    // NSObject->CF bridge already proven elsewhere in this codebase (see
-                    // core:crypto's asCFDictionaryRef()).
+                    // header) doesn't resolve as a Kotlin/Native property in this toolchain, and
+                    // neither does the NSKeyValueCoding category's valueForKey: -- both confirmed
+                    // "Unresolved reference" on real CodeMagic builds, even though
+                    // `protectionSpace.authenticationMethod` (a normal declared property, not
+                    // CF-bridged) resolves fine, so this looks like a genuine klib gap specific to
+                    // this one CF-bridged property and to the KVC category, not a general binding
+                    // problem. performSelector: is different -- declared directly on the NSObject
+                    // protocol itself (not a category), and this genuinely is the most fundamental
+                    // ObjC message-send primitive there is, so it's the last fallback below
+                    // valueForKey: rather than another guess at the same tier.
                     val protectionSpace: NSObject = challenge.protectionSpace
-                    val trust = (protectionSpace.valueForKey("serverTrust") as? NSObject)?.asSecTrustRef()
+                    val trust = (protectionSpace.performSelector(NSSelectorFromString("serverTrust")) as? NSObject)?.asSecTrustRef()
                     val certificate = trust?.let { SecTrustGetCertificateAtIndex(it, 0) }
                     val certificateData = certificate?.let { SecCertificateCopyData(it) }
                     val certificateDer = certificateData?.let { (CFBridgingRelease(it) as NSData).toByteArray() }
