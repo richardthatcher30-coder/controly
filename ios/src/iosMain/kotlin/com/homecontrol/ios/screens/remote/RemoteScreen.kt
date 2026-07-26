@@ -35,7 +35,9 @@ import com.homecontrol.core.model.RemoteKey
 import com.homecontrol.ios.adb.AdbConnection
 import com.homecontrol.ios.adb.KeyOrigin
 import com.homecontrol.ios.companion.CompanionConnection
+import com.homecontrol.ios.samsung.SamsungConnection
 import com.homecontrol.ios.screens.devices.COMPANION_SUPPORTED_TYPES
+import com.homecontrol.ios.screens.devices.SAMSUNG_SUPPORTED_TYPES
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -51,22 +53,36 @@ private sealed interface ConnectionUiState {
     data class Failed(val message: String) : ConnectionUiState
 }
 
+private sealed interface RemoteTransportKind {
+    data object Adb : RemoteTransportKind
+    data object WindowsCompanion : RemoteTransportKind
+    data object Samsung : RemoteTransportKind
+}
+
+private fun transportKindFor(deviceType: DeviceType): RemoteTransportKind = when {
+    deviceType in COMPANION_SUPPORTED_TYPES -> RemoteTransportKind.WindowsCompanion
+    deviceType in SAMSUNG_SUPPORTED_TYPES -> RemoteTransportKind.Samsung
+    else -> RemoteTransportKind.Adb
+}
+
 /**
- * Sends key presses over an [AdbConnection] (ADB-supported types) or a
- * [CompanionConnection] (Windows PC, see [COMPANION_SUPPORTED_TYPES]) held
- * open for the lifetime of this screen — connecting once on entry (fast,
- * since [connect][AdbConnection.connect] reuses an already-trusted key from
+ * Sends key presses over an [AdbConnection] (ADB-supported types), a
+ * [CompanionConnection] (Windows PC, see [COMPANION_SUPPORTED_TYPES]), or a
+ * [SamsungConnection] (see [SAMSUNG_SUPPORTED_TYPES]) held open for the
+ * lifetime of this screen — connecting once on entry (fast, since
+ * [connect][AdbConnection.connect] reuses an already-trusted key from
  * pairing, no approval wait expected) rather than reconnecting per button
- * press. Only one of [adbConnection]/[companionConnection] is ever created,
- * picked once from [deviceType] -- see [isCompanionDevice].
+ * press. Only one of the three connection objects is ever created, picked
+ * once from [deviceType] -- see [transportKindFor].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RemoteScreen(deviceName: String, ipAddress: String, deviceType: DeviceType, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val isCompanionDevice = deviceType in COMPANION_SUPPORTED_TYPES
-    val adbConnection = remember { if (isCompanionDevice) null else AdbConnection() }
-    val companionConnection = remember { if (isCompanionDevice) CompanionConnection() else null }
+    val transportKind = remember(deviceType) { transportKindFor(deviceType) }
+    val adbConnection = remember { if (transportKind == RemoteTransportKind.Adb) AdbConnection() else null }
+    val companionConnection = remember { if (transportKind == RemoteTransportKind.WindowsCompanion) CompanionConnection() else null }
+    val samsungConnection = remember { if (transportKind == RemoteTransportKind.Samsung) SamsungConnection() else null }
     var connectionState by remember { mutableStateOf<ConnectionUiState>(ConnectionUiState.Connecting) }
 
     DisposableEffect(ipAddress) {
@@ -89,7 +105,11 @@ fun RemoteScreen(deviceName: String, ipAddress: String, deviceType: DeviceType, 
             connecting = true
             scope.launch(Dispatchers.Default) {
                 try {
-                    if (isCompanionDevice) companionConnection!!.connect(ipAddress) else adbConnection!!.connect(ipAddress)
+                    when (transportKind) {
+                        RemoteTransportKind.WindowsCompanion -> companionConnection!!.connect(ipAddress)
+                        RemoteTransportKind.Samsung -> samsungConnection!!.connect(ipAddress)
+                        RemoteTransportKind.Adb -> adbConnection!!.connect(ipAddress)
+                    }
                     withContext(Dispatchers.Main) { connectionState = ConnectionUiState.Connected }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
@@ -117,7 +137,11 @@ fun RemoteScreen(deviceName: String, ipAddress: String, deviceType: DeviceType, 
         onDispose {
             NSNotificationCenter.defaultCenter.removeObserver(activeObserver)
             scope.launch(Dispatchers.Default) {
-                if (isCompanionDevice) companionConnection?.disconnect() else adbConnection?.disconnect()
+                when (transportKind) {
+                    RemoteTransportKind.WindowsCompanion -> companionConnection?.disconnect()
+                    RemoteTransportKind.Samsung -> samsungConnection?.disconnect()
+                    RemoteTransportKind.Adb -> adbConnection?.disconnect()
+                }
             }
         }
     }
@@ -126,10 +150,10 @@ fun RemoteScreen(deviceName: String, ipAddress: String, deviceType: DeviceType, 
         if (connectionState !is ConnectionUiState.Connected) return
         scope.launch(Dispatchers.Default) {
             runCatching {
-                if (isCompanionDevice) {
-                    companionConnection!!.sendCommand("key_event", buildJsonObject { put("key", JsonPrimitive(key.name)) })
-                } else {
-                    adbConnection!!.shell("input keyevent ${androidKeycodeFor(key)}")
+                when (transportKind) {
+                    RemoteTransportKind.WindowsCompanion -> companionConnection!!.sendCommand("key_event", buildJsonObject { put("key", JsonPrimitive(key.name)) })
+                    RemoteTransportKind.Samsung -> samsungConnection!!.sendKey(key)
+                    RemoteTransportKind.Adb -> adbConnection!!.shell("input keyevent ${androidKeycodeFor(key)}")
                 }
             }
         }

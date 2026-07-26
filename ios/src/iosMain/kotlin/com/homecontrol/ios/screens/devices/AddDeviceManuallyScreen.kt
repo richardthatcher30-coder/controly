@@ -101,7 +101,7 @@ fun AddDeviceManuallyScreen(onBack: () -> Unit, onPaired: () -> Unit) {
                     RadioButton(selected = deviceType == type, onClick = { deviceType = type })
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(text = label)
-                    if (type !in ADB_SUPPORTED_TYPES && type !in COMPANION_SUPPORTED_TYPES) {
+                    if (type !in ADB_SUPPORTED_TYPES && type !in COMPANION_SUPPORTED_TYPES && type !in SAMSUNG_SUPPORTED_TYPES) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "(coming soon)",
