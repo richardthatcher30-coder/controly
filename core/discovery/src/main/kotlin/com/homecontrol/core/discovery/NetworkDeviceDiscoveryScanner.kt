@@ -277,7 +277,7 @@ class NetworkDeviceDiscoveryScanner(
                     onFound(
                         DiscoveredDevice(
                             discoveryId = "adbscan:$ip",
-                            name = "Possible Android TV ($ip)",
+                            name = "Amazon Firestick ($ip)",
                             ipAddress = ip,
                             port = ADB_PORT,
                             deviceTypeHint = DeviceType.FIRE_TV,
