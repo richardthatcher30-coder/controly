@@ -173,7 +173,8 @@ class CompanionConnection(
                     // returned id to SecTrustRef via CFBridgingRetain + reinterpret -- the same
                     // NSObject->CF bridge already proven elsewhere in this codebase (see
                     // core:crypto's asCFDictionaryRef()).
-                    val trust = (challenge.protectionSpace.valueForKey("serverTrust") as? NSObject)?.asSecTrustRef()
+                    val protectionSpace: NSObject = challenge.protectionSpace
+                    val trust = (protectionSpace.valueForKey("serverTrust") as? NSObject)?.asSecTrustRef()
                     val certificate = trust?.let { SecTrustGetCertificateAtIndex(it, 0) }
                     val certificateData = certificate?.let { SecCertificateCopyData(it) }
                     val certificateDer = certificateData?.let { (CFBridgingRelease(it) as NSData).toByteArray() }
