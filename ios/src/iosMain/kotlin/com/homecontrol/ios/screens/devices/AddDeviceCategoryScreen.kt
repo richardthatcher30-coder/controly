@@ -28,8 +28,9 @@ import androidx.compose.ui.unit.dp
 
 /**
  * First stop when adding something new — a choice between the two kinds of
- * thing this app can add, before either the device auto-discovery flow (see
- * [DeviceDiscoveryScreen]) or the (not yet implemented on iOS) camera flow.
+ * thing this app can add: the device auto-discovery flow (see
+ * [DeviceDiscoveryScreen]) or the camera grid (see
+ * [com.homecontrol.ios.screens.cameras.CameraGridScreen]).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

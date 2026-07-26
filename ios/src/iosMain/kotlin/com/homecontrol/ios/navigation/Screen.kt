@@ -16,6 +16,7 @@ sealed interface Screen {
     data object AddDeviceCategory : Screen
     data object DeviceDiscovery : Screen
     data object AddDeviceManually : Screen
+    data object CameraGrid : Screen
     data object AddCamera : Screen
     data class Remote(val deviceId: String, val deviceName: String, val ipAddress: String, val deviceType: DeviceType) : Screen
     data object Settings : Screen

@@ -14,6 +14,7 @@ import com.homecontrol.ios.screens.dashboard.DashboardScreen
 import com.homecontrol.ios.screens.devices.AddCameraScreen
 import com.homecontrol.ios.screens.devices.AddDeviceCategoryScreen
 import com.homecontrol.ios.screens.devices.AddDeviceManuallyScreen
+import com.homecontrol.ios.screens.cameras.CameraGridScreen
 import com.homecontrol.ios.screens.devices.DeviceDiscoveryScreen
 import com.homecontrol.ios.screens.remote.RemoteScreen
 import com.homecontrol.ios.screens.settings.LicensesScreen
@@ -58,7 +59,7 @@ fun ControlyApp() {
                 Screen.AddDeviceCategory -> AddDeviceCategoryScreen(
                     onBack = { pop() },
                     onDevicesClick = { push(Screen.DeviceDiscovery) },
-                    onCamerasClick = { push(Screen.AddCamera) },
+                    onCamerasClick = { push(Screen.CameraGrid) },
                 )
                 Screen.DeviceDiscovery -> DeviceDiscoveryScreen(
                     onBack = { pop() },
@@ -68,6 +69,10 @@ fun ControlyApp() {
                 Screen.AddDeviceManually -> AddDeviceManuallyScreen(
                     onBack = { pop() },
                     onPaired = { popToDashboard() },
+                )
+                Screen.CameraGrid -> CameraGridScreen(
+                    onBack = { pop() },
+                    onAddCamera = { push(Screen.AddCamera) },
                 )
                 Screen.AddCamera -> AddCameraScreen(onBack = { pop() })
                 is Screen.Remote -> RemoteScreen(

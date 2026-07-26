@@ -54,5 +54,12 @@ kotlin {
 
     sourceSets.iosMain.dependencies {
         implementation(libs.ktor.client.darwin)
+        // Only for the WS-Security SHA-1 digest ONVIF camera auth needs
+        // (see cameras/onvif/OnvifClient.kt) -- cryptography-core itself is
+        // already transitively visible via core:companion-protocol's `api`
+        // dependency on it, but the actual Apple provider implementation
+        // (CryptographyProvider.Apple) is only `implementation` there, so it
+        // needs its own declaration here to be usable directly.
+        implementation(libs.cryptography.provider.apple)
     }
 }
