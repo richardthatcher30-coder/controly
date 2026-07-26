@@ -26,7 +26,6 @@ import kotlinx.serialization.json.JsonElement
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
-import platform.Foundation.NSObject
 import platform.Foundation.NSURLAuthenticationMethodServerTrust
 import platform.Foundation.NSURLCredential
 import platform.Foundation.NSURLSessionAuthChallengeCancelAuthenticationChallenge
@@ -34,6 +33,7 @@ import platform.Foundation.NSURLSessionAuthChallengeUseCredential
 import platform.Security.SecCertificateCopyData
 import platform.Security.SecTrustGetCertificateAtIndex
 import platform.Security.SecTrustRef
+import platform.darwin.NSObject
 
 private const val COMPANION_PORT = 7591
 private const val COMPANION_PATH = "/companion"
@@ -235,4 +235,5 @@ class CompanionConnection(
 }
 
 /** See the doc comment at this function's one call site (openSocket's handleChallenge). */
+@OptIn(ExperimentalForeignApi::class)
 private fun NSObject.asSecTrustRef(): SecTrustRef = CFBridgingRetain(this)!!.reinterpret()
