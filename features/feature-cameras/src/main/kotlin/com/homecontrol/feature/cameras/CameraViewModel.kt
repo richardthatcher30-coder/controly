@@ -17,6 +17,7 @@ sealed interface StreamUiState {
 class CameraViewModel(
     savedStateHandle: SavedStateHandle,
     private val store: CameraStore,
+    private val networkChecker: LocalNetworkChecker,
 ) : ViewModel() {
 
     private val cameraId: String = checkNotNull(savedStateHandle[CAMERA_ID_ARG])
@@ -39,7 +40,7 @@ class CameraViewModel(
         }
         _uiState.value = StreamUiState.Loading
         viewModelScope.launch {
-            val result = resolveCameraStreamUri(camera, store)
+            val result = resolveCameraStreamUri(camera, store, networkChecker)
             _uiState.value = result.fold(
                 onSuccess = { StreamUiState.Ready(it) },
                 onFailure = { StreamUiState.Failed(it.message ?: "Couldn't connect to the camera") },

@@ -208,10 +208,11 @@ private fun CameraTile(
 private fun CameraFeed(camera: CameraConfig, modifier: Modifier = Modifier) {
     var state by remember(camera.id) { mutableStateOf<StreamUiState>(StreamUiState.Loading) }
     val cameraStore = koinInject<CameraStore>()
+    val networkChecker = koinInject<LocalNetworkChecker>()
 
     LaunchedEffect(camera.id) {
         state = StreamUiState.Loading
-        state = resolveCameraStreamUri(camera, cameraStore).fold(
+        state = resolveCameraStreamUri(camera, cameraStore, networkChecker).fold(
             onSuccess = { StreamUiState.Ready(it) },
             onFailure = { StreamUiState.Failed(it.message ?: "Couldn't connect") },
         )

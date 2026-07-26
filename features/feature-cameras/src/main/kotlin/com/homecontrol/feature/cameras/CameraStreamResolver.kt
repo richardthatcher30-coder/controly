@@ -9,17 +9,40 @@ import kotlinx.coroutines.withContext
  * camera view and grid tiles.
  *
  * Tries the camera's local (LAN) address first via full ONVIF negotiation,
- * same as always. If that fails and a remote address is configured, falls
- * back to it directly as an RTSP URL, reusing the port + path last learned
- * from a successful local resolution (persisted on the camera itself via
- * [CameraStore.update]). Remote fallback deliberately does NOT redo ONVIF
- * negotiation over the remote address — most port-forwarding setups only
- * forward the RTSP port, not the separate ONVIF/SOAP port too — so remote
- * viewing only works once the camera has been viewed locally at least once
- * and its stream details are known.
+ * unless [networkChecker] is confident this phone isn't even on the
+ * camera's network right now (e.g. mobile data, or a different Wi-Fi
+ * entirely) and a remote address is already configured — in which case the
+ * local attempt is skipped outright rather than waiting out a connection
+ * attempt against an address that's obviously unreachable from here. If the
+ * local attempt does run and fails, or the network check itself is
+ * inconclusive, this still falls back to the remote address the same as
+ * before — the network check is a fast-path, not a replacement for the
+ * fallback.
+ *
+ * Remote fallback deliberately does NOT redo ONVIF negotiation over the
+ * remote address — most port-forwarding setups only forward the RTSP port,
+ * not the separate ONVIF/SOAP port too — so remote viewing only works once
+ * the camera has been viewed locally at least once and its stream details
+ * are known (reuses the port + path last learned from a successful local
+ * resolution, persisted on the camera itself via [CameraStore.update]).
  */
-internal suspend fun resolveCameraStreamUri(camera: CameraConfig, cameraStore: CameraStore): Result<String> =
+internal suspend fun resolveCameraStreamUri(
+    camera: CameraConfig,
+    cameraStore: CameraStore,
+    networkChecker: LocalNetworkChecker,
+): Result<String> =
     withContext(Dispatchers.IO) {
+        fun remoteResult(): Result<String>? {
+            val remoteHost = camera.remoteHost?.takeIf { it.isNotBlank() } ?: return null
+            val remotePort = camera.remoteRtspPort ?: return null
+            val path = camera.lastKnownRtspPath ?: return null
+            return Result.success("rtsp://${camera.username}:${camera.password}@$remoteHost:$remotePort$path")
+        }
+
+        if (!networkChecker.isLikelyOnSameNetwork(camera.ipAddress)) {
+            remoteResult()?.let { return@withContext it }
+        }
+
         val localResult = OnvifClient(camera.ipAddress, camera.onvifPort, camera.username, camera.password).resolveStreamUri()
 
         localResult.onSuccess { uri ->
@@ -30,13 +53,7 @@ internal suspend fun resolveCameraStreamUri(camera: CameraConfig, cameraStore: C
         }
         if (localResult.isSuccess) return@withContext localResult
 
-        val remoteHost = camera.remoteHost?.takeIf { it.isNotBlank() }
-        val remotePort = camera.remoteRtspPort
-        val path = camera.lastKnownRtspPath
-        if (remoteHost == null || remotePort == null || path == null) {
-            return@withContext localResult
-        }
-        Result.success("rtsp://${camera.username}:${camera.password}@$remoteHost:$remotePort$path")
+        remoteResult() ?: localResult
     }
 
 private data class RtspTarget(val port: Int, val pathAndQuery: String)
