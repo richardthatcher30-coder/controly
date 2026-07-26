@@ -19,6 +19,7 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.UnsafeNumber
+import kotlinx.cinterop.interpretObjCPointer
 import kotlinx.cinterop.reinterpret
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -200,7 +201,14 @@ class CompanionConnection(
                     }
 
                     observedFingerprint = fingerprint
-                    completionHandler(NSURLSessionAuthChallengeUseCredential, NSURLCredential.credentialForTrust(trust))
+                    // NSURLCredential.credentialForTrust: (a class/factory method, +credentialForTrust:)
+                    // has the same "Unresolved reference" gap serverTrust did -- same fix, performSelector,
+                    // but the two-argument overload since this selector takes the trust as its one
+                    // parameter. NSURLCredential's companion object represents its Class object, which
+                    // (like any Class in ObjC) also responds to inherited NSObject instance methods
+                    // such as performSelector:withObject:.
+                    val credential = NSURLCredential.performSelector(NSSelectorFromString("credentialForTrust:"), trust.asNSObjectViaObjCPointer())
+                    completionHandler(NSURLSessionAuthChallengeUseCredential, credential as? NSURLCredential)
                 }
             }
         }
@@ -241,3 +249,7 @@ class CompanionConnection(
 /** See the doc comment at this function's one call site (openSocket's handleChallenge). */
 @OptIn(ExperimentalForeignApi::class)
 private fun NSObject.asSecTrustRef(): SecTrustRef = CFBridgingRetain(this)!!.reinterpret()
+
+/** The reverse bridge of [asSecTrustRef] -- reinterprets the raw pointer directly, same pattern as this codebase's `asNSString()` helpers. */
+@OptIn(ExperimentalForeignApi::class)
+private fun SecTrustRef.asNSObjectViaObjCPointer(): NSObject = interpretObjCPointer(this.rawValue)
