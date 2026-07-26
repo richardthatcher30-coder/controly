@@ -38,6 +38,8 @@ import com.homecontrol.ios.companion.CompanionConnection
 import com.homecontrol.ios.samsung.SamsungConnection
 import com.homecontrol.ios.screens.devices.COMPANION_SUPPORTED_TYPES
 import com.homecontrol.ios.screens.devices.SAMSUNG_SUPPORTED_TYPES
+import com.homecontrol.ios.screens.devices.SONY_SUPPORTED_TYPES
+import com.homecontrol.ios.sony.SonyConnection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -57,23 +59,25 @@ private sealed interface RemoteTransportKind {
     data object Adb : RemoteTransportKind
     data object WindowsCompanion : RemoteTransportKind
     data object Samsung : RemoteTransportKind
+    data object Sony : RemoteTransportKind
 }
 
 private fun transportKindFor(deviceType: DeviceType): RemoteTransportKind = when {
     deviceType in COMPANION_SUPPORTED_TYPES -> RemoteTransportKind.WindowsCompanion
     deviceType in SAMSUNG_SUPPORTED_TYPES -> RemoteTransportKind.Samsung
+    deviceType in SONY_SUPPORTED_TYPES -> RemoteTransportKind.Sony
     else -> RemoteTransportKind.Adb
 }
 
 /**
  * Sends key presses over an [AdbConnection] (ADB-supported types), a
- * [CompanionConnection] (Windows PC, see [COMPANION_SUPPORTED_TYPES]), or a
- * [SamsungConnection] (see [SAMSUNG_SUPPORTED_TYPES]) held open for the
- * lifetime of this screen — connecting once on entry (fast, since
- * [connect][AdbConnection.connect] reuses an already-trusted key from
- * pairing, no approval wait expected) rather than reconnecting per button
- * press. Only one of the three connection objects is ever created, picked
- * once from [deviceType] -- see [transportKindFor].
+ * [CompanionConnection] (Windows PC, see [COMPANION_SUPPORTED_TYPES]), a
+ * [SamsungConnection] (see [SAMSUNG_SUPPORTED_TYPES]), or a [SonyConnection]
+ * (see [SONY_SUPPORTED_TYPES]) held open for the lifetime of this screen —
+ * connecting once on entry (fast, since [connect][AdbConnection.connect]
+ * reuses an already-trusted key from pairing, no approval wait expected)
+ * rather than reconnecting per button press. Only one of the four connection
+ * objects is ever created, picked once from [deviceType] -- see [transportKindFor].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,6 +87,7 @@ fun RemoteScreen(deviceName: String, ipAddress: String, deviceType: DeviceType, 
     val adbConnection = remember { if (transportKind == RemoteTransportKind.Adb) AdbConnection() else null }
     val companionConnection = remember { if (transportKind == RemoteTransportKind.WindowsCompanion) CompanionConnection() else null }
     val samsungConnection = remember { if (transportKind == RemoteTransportKind.Samsung) SamsungConnection() else null }
+    val sonyConnection = remember { if (transportKind == RemoteTransportKind.Sony) SonyConnection() else null }
     var connectionState by remember { mutableStateOf<ConnectionUiState>(ConnectionUiState.Connecting) }
 
     DisposableEffect(ipAddress) {
@@ -108,6 +113,7 @@ fun RemoteScreen(deviceName: String, ipAddress: String, deviceType: DeviceType, 
                     when (transportKind) {
                         RemoteTransportKind.WindowsCompanion -> companionConnection!!.connect(ipAddress)
                         RemoteTransportKind.Samsung -> samsungConnection!!.connect(ipAddress)
+                        RemoteTransportKind.Sony -> sonyConnection!!.connect(ipAddress)
                         RemoteTransportKind.Adb -> adbConnection!!.connect(ipAddress)
                     }
                     withContext(Dispatchers.Main) { connectionState = ConnectionUiState.Connected }
@@ -140,6 +146,7 @@ fun RemoteScreen(deviceName: String, ipAddress: String, deviceType: DeviceType, 
                 when (transportKind) {
                     RemoteTransportKind.WindowsCompanion -> companionConnection?.disconnect()
                     RemoteTransportKind.Samsung -> samsungConnection?.disconnect()
+                    RemoteTransportKind.Sony -> sonyConnection?.disconnect()
                     RemoteTransportKind.Adb -> adbConnection?.disconnect()
                 }
             }
@@ -153,6 +160,7 @@ fun RemoteScreen(deviceName: String, ipAddress: String, deviceType: DeviceType, 
                 when (transportKind) {
                     RemoteTransportKind.WindowsCompanion -> companionConnection!!.sendCommand("key_event", buildJsonObject { put("key", JsonPrimitive(key.name)) })
                     RemoteTransportKind.Samsung -> samsungConnection!!.sendKey(key)
+                    RemoteTransportKind.Sony -> sonyConnection!!.sendKey(key)
                     RemoteTransportKind.Adb -> adbConnection!!.shell("input keyevent ${androidKeycodeFor(key)}")
                 }
             }

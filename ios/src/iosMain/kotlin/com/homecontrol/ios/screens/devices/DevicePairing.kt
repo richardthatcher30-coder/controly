@@ -1,6 +1,7 @@
 package com.homecontrol.ios.screens.devices
 
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +21,9 @@ import com.homecontrol.ios.companion.CompanionPairingRejectedException
 import com.homecontrol.ios.samsung.SamsungConnection
 import com.homecontrol.ios.samsung.SamsungPairingRejectedException
 import com.homecontrol.ios.samsung.SamsungPairingTimeoutException
+import com.homecontrol.ios.sony.SonyBeginPairingOutcome
+import com.homecontrol.ios.sony.SonyConnection
+import com.homecontrol.ios.sony.SonyInvalidCodeException
 import com.homecontrol.ios.storage.PairedDeviceStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +47,9 @@ val COMPANION_SUPPORTED_TYPES = setOf(DeviceType.WINDOWS_PC)
 /** Uses Samsung's legacy plain-TCP remote protocol (see [SamsungConnection]'s doc comment) instead of ADB. */
 val SAMSUNG_SUPPORTED_TYPES = setOf(DeviceType.SAMSUNG_TV)
 
+/** Uses Sony's ScalarWebAPI/IRCC-IP protocol (see [SonyConnection]'s doc comment), with a two-step PIN-entry pairing flow instead of a single blocking approval call. */
+val SONY_SUPPORTED_TYPES = setOf(DeviceType.SONY_TV)
+
 fun deviceTypeLabel(deviceType: DeviceType): String = when (deviceType) {
     DeviceType.GOOGLE_TV -> "Google TV"
     DeviceType.UNKNOWN -> "Unknown device"
@@ -52,6 +59,8 @@ fun deviceTypeLabel(deviceType: DeviceType): String = when (deviceType) {
 sealed interface PairingUiState {
     data object Idle : PairingUiState
     data class InProgress(val deviceName: String, val deviceType: DeviceType) : PairingUiState
+    /** Sony's PIN flow only: the TV showed a code on-screen, waiting for the user to type it back in. */
+    data class AwaitingCode(val deviceName: String, val ipAddress: String) : PairingUiState
     data class Success(val deviceName: String, val keyOrigin: KeyOrigin?, val retrieveMissStatus: Long?) : PairingUiState
     data class Failed(val deviceName: String, val reason: String) : PairingUiState
 }
@@ -72,8 +81,16 @@ class PairingController internal constructor(
     var state by mutableStateOf<PairingUiState>(PairingUiState.Idle)
         private set
 
+    // Held between a Sony beginPairing() call that came back PinRequired and
+    // the matching submitCode() -- SonyConnection.completePairing() needs the
+    // exact same client/clientid the first actRegister call used, not a fresh
+    // one, so this has to survive across the two separate user-driven steps.
+    private var pendingSonyConnection: SonyConnection? = null
+
     fun start(ip: String, deviceName: String, selectedType: DeviceType) {
-        if (selectedType !in ADB_SUPPORTED_TYPES && selectedType !in COMPANION_SUPPORTED_TYPES && selectedType !in SAMSUNG_SUPPORTED_TYPES) {
+        if (selectedType !in ADB_SUPPORTED_TYPES && selectedType !in COMPANION_SUPPORTED_TYPES &&
+            selectedType !in SAMSUNG_SUPPORTED_TYPES && selectedType !in SONY_SUPPORTED_TYPES
+        ) {
             state = PairingUiState.Failed(
                 deviceName,
                 "${deviceTypeLabel(selectedType)} pairing isn't supported on iOS yet — coming soon.",
@@ -130,6 +147,23 @@ class PairingController internal constructor(
                             state = PairingUiState.Success(deviceName, keyOrigin = null, retrieveMissStatus = null)
                         }
                     }
+                    selectedType in SONY_SUPPORTED_TYPES -> {
+                        val connection = SonyConnection()
+                        when (connection.beginPairing(ip)) {
+                            SonyBeginPairingOutcome.Registered -> {
+                                store.add(sonyPairedDevice(ip, deviceName, selectedType))
+                                withContext(Dispatchers.Main) {
+                                    state = PairingUiState.Success(deviceName, keyOrigin = null, retrieveMissStatus = null)
+                                }
+                            }
+                            SonyBeginPairingOutcome.PinRequired -> {
+                                pendingSonyConnection = connection
+                                withContext(Dispatchers.Main) {
+                                    state = PairingUiState.AwaitingCode(deviceName, ip)
+                                }
+                            }
+                        }
+                    }
                     else -> {
                         val connection = AdbConnection()
                         connection.pair(ip)
@@ -177,12 +211,52 @@ class PairingController internal constructor(
         }
     }
 
+    /** Second step of Sony's PIN pairing — the code the user read off the TV screen and typed back in. */
+    fun submitCode(code: String) {
+        val awaiting = state as? PairingUiState.AwaitingCode ?: return
+        val connection = pendingSonyConnection ?: return
+        state = PairingUiState.InProgress(awaiting.deviceName, DeviceType.SONY_TV)
+        scope.launch(Dispatchers.Default) {
+            try {
+                connection.completePairing(awaiting.ipAddress, code)
+                pendingSonyConnection = null
+                store.add(sonyPairedDevice(awaiting.ipAddress, awaiting.deviceName, DeviceType.SONY_TV))
+                withContext(Dispatchers.Main) {
+                    state = PairingUiState.Success(awaiting.deviceName, keyOrigin = null, retrieveMissStatus = null)
+                }
+            } catch (e: SonyInvalidCodeException) {
+                withContext(Dispatchers.Main) {
+                    state = PairingUiState.Failed(awaiting.deviceName, e.message ?: "That code wasn't accepted.")
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    state = PairingUiState.Failed(awaiting.deviceName, e.message ?: "Couldn't pair with ${awaiting.deviceName}")
+                }
+            }
+        }
+    }
+
     fun dismiss() {
         val wasSuccess = state is PairingUiState.Success
+        pendingSonyConnection = null
         state = PairingUiState.Idle
         if (wasSuccess) onPaired()
     }
 }
+
+private fun sonyPairedDevice(ip: String, deviceName: String, deviceType: DeviceType) = PairedDevice(
+    id = "sonytv:$ip",
+    name = deviceName,
+    manufacturer = "Sony",
+    model = "Bravia",
+    ipAddress = ip,
+    macAddress = null,
+    deviceType = deviceType,
+    firmwareVersion = null,
+    capabilities = DeviceCapabilities.NONE,
+    isOnline = true,
+    pluginId = "sonytv-ios",
+)
 
 @Composable
 fun rememberPairingController(onPaired: () -> Unit): PairingController {
@@ -199,10 +273,17 @@ fun PairingDialogHost(controller: PairingController) {
             body = when {
                 state.deviceType in COMPANION_SUPPORTED_TYPES -> "Check the PC's screen and approve the pairing request there."
                 state.deviceType in SAMSUNG_SUPPORTED_TYPES -> "Check the TV's screen and select \"Allow\" on the connection prompt. This can take up to two minutes."
+                state.deviceType in SONY_SUPPORTED_TYPES -> "Contacting the TV…"
                 else -> "Check the TV's screen and select \"Allow\" (ideally \"Always allow\") on the " +
                     "debugging prompt. This can take up to two minutes."
             },
             onDismiss = null,
+        )
+
+        is PairingUiState.AwaitingCode -> CodeEntryDialog(
+            deviceName = state.deviceName,
+            onSubmit = { code -> controller.submitCode(code) },
+            onCancel = { controller.dismiss() },
         )
 
         is PairingUiState.Success -> PairingDialog(
@@ -230,6 +311,29 @@ fun PairingDialogHost(controller: PairingController) {
 
         PairingUiState.Idle -> Unit
     }
+}
+
+@Composable
+private fun CodeEntryDialog(deviceName: String, onSubmit: (String) -> Unit, onCancel: () -> Unit) {
+    var code by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Enter the code shown on $deviceName") },
+        text = {
+            OutlinedTextField(
+                value = code,
+                onValueChange = { code = it },
+                label = { Text("Code") },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSubmit(code) }, enabled = code.isNotBlank()) { Text("Submit") }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable
