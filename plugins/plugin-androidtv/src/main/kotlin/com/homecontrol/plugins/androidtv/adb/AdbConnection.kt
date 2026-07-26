@@ -124,12 +124,26 @@ internal class AdbConnection private constructor(
      * without either side seeing a close — [Socket.isConnected] only
      * reflects whether `connect()` was ever called, not the current state,
      * so an actual command is the only reliable way to tell.
+     *
+     * Retries once after a short delay before giving up: on real hardware, a
+     * connection used seconds earlier for a fresh pairing approval can fail
+     * its very first follow-up command while the device's own ADB daemon is
+     * still settling right after the user tapped Allow — a single transient
+     * failure there isn't proof the socket is actually dead, and treating it
+     * as dead was forcing a full reconnect (and, if the device hadn't
+     * finished registering the just-approved key yet, a second on-screen
+     * approval prompt) immediately after the first one succeeded.
      */
-    fun isAlive(): Boolean = try {
-        shell("echo")
-        true
-    } catch (error: Exception) {
-        false
+    fun isAlive(): Boolean {
+        repeat(2) { attempt ->
+            try {
+                shell("echo")
+                return true
+            } catch (error: Exception) {
+                if (attempt == 0) Thread.sleep(500)
+            }
+        }
+        return false
     }
 
     private fun writeMessage(command: Int, arg0: Int, arg1: Int, data: ByteArray = ByteArray(0)) {

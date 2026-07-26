@@ -14,11 +14,16 @@ import com.homecontrol.core.model.RemoteKey
 import com.homecontrol.core.pluginapi.IDevicePlugin
 import com.homecontrol.plugins.samsungtv.networking.SamsungLegacyClient
 import com.homecontrol.plugins.samsungtv.networking.SamsungLegacyOutcome
+import java.io.File
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private const val PLUGIN_ID = "samsungtv"
+private const val WAKE_ON_LAN_PORT = 9
 
 /**
  * Samsung Smart TVs, controlled via Samsung's older plain-TCP remote-control
@@ -79,7 +84,14 @@ class SamsungTvPlugin(
             when (val outcome = client.connect()) {
                 SamsungLegacyOutcome.Connected -> {
                     clients[discovered.ipAddress] = client
-                    PairingResult.Success(discovered.toPairedDevice())
+                    // SSDP (how Samsung TVs are actually discovered, unlike Windows PCs'
+                    // custom broadcast which includes it directly) never reports a MAC
+                    // address -- resolve it from the OS ARP cache now that a real TCP
+                    // connection to the TV's IP was just made, which is what populates
+                    // that cache entry in the first place. Needed for powerOn()'s
+                    // Wake-on-LAN packet to have anywhere to send to.
+                    val resolvedMac = discovered.macAddress ?: resolveMacFromArpCache(discovered.ipAddress)
+                    PairingResult.Success(discovered.toPairedDevice(macAddress = resolvedMac))
                 }
                 SamsungLegacyOutcome.Denied -> {
                     client.close()
@@ -99,7 +111,7 @@ class SamsungTvPlugin(
             }
         }
 
-    private fun DiscoveredDevice.toPairedDevice() = PairedDevice(
+    private fun DiscoveredDevice.toPairedDevice(macAddress: String?) = PairedDevice(
         id = "$PLUGIN_ID:$ipAddress",
         name = name,
         manufacturer = manufacturer ?: "Samsung",
@@ -112,6 +124,25 @@ class SamsungTvPlugin(
         isOnline = true,
         pluginId = PLUGIN_ID,
     )
+
+    /**
+     * Reads the kernel's neighbor table (`/proc/net/arp`) for the MAC
+     * associated with [ipAddress] -- readable without any special permission
+     * on stock Android, the same technique long used by LAN-scanner apps.
+     * Only reliable right after real IP traffic to that address (an ARP
+     * entry has to actually exist), which pairing already guarantees by the
+     * time this is called.
+     */
+    private fun resolveMacFromArpCache(ipAddress: String): String? = runCatching {
+        File("/proc/net/arp").readLines()
+            .drop(1) // header row: "IP address  HW type  Flags  HW address  Mask  Device"
+            .mapNotNull { line ->
+                val fields = line.trim().split(Regex("\\s+"))
+                if (fields.size >= 4 && fields[0] == ipAddress) fields[3] else null
+            }
+            .firstOrNull()
+            ?.takeUnless { it == "00:00:00:00:00:00" }
+    }.getOrNull()
 
     override suspend fun connect(device: PairedDevice): ConnectionResult = withContext(Dispatchers.IO) {
         // Always rebuild rather than trusting a cached client's mere
@@ -169,9 +200,37 @@ class SamsungTvPlugin(
         }
     }
 
-    override suspend fun powerOn(device: PairedDevice) = sendKey(device, RemoteKey.POWER)
+    /**
+     * A fully-off legacy Samsung set has no network stack listening on port
+     * 55000 for [sendKey] to reach at all -- Wake-on-LAN is the only way to
+     * turn one on remotely. The TV has to have "Anynet+ (HDMI-CEC)" enabled
+     * in its own settings for this to actually work: that's the setting
+     * that also gates Samsung's "Power on with Mobile" Wi-Fi standby mode,
+     * which is what keeps its network interface listening for a WOL packet
+     * while otherwise fully off. This is unrelated to real HDMI-CEC
+     * signaling (which needs an actual HDMI cable a phone app has no way to
+     * drive) -- it's just the TV-side name for the setting that has to be on.
+     */
+    override suspend fun powerOn(device: PairedDevice) {
+        val mac = device.macAddress ?: return
+        withContext(Dispatchers.IO) { sendWakeOnLanPacket(mac) }
+    }
 
     override suspend fun powerOff(device: PairedDevice) = sendKey(device, RemoteKey.POWER)
+
+    private fun sendWakeOnLanPacket(macAddress: String) {
+        val macBytes = macAddress.split(":", "-").map { it.toInt(16).toByte() }.toByteArray()
+        if (macBytes.size != 6) return
+
+        val packet = ByteArray(6 + 16 * 6)
+        for (i in 0 until 6) packet[i] = 0xFF.toByte()
+        for (i in 0 until 16) System.arraycopy(macBytes, 0, packet, 6 + i * 6, 6)
+
+        DatagramSocket().use { socket ->
+            socket.broadcast = true
+            socket.send(DatagramPacket(packet, packet.size, InetAddress.getByName("255.255.255.255"), WAKE_ON_LAN_PORT))
+        }
+    }
 
     override suspend fun volumeUp(device: PairedDevice) = sendKey(device, RemoteKey.VOLUME_UP)
 
@@ -198,6 +257,7 @@ class SamsungTvPlugin(
         supportsInputSource = false,
         supportsSourceCycle = true,
         supportsSmartHub = true,
+        supportsWakeOnLan = true,
     )
 
     private fun keyCodeFor(key: RemoteKey): String? = when (key) {
